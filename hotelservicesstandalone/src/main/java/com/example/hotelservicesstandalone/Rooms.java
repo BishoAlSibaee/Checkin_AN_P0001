@@ -86,6 +86,11 @@ import com.tuya.smart.android.device.bean.MultiControlBean;
 import com.tuya.smart.android.device.bean.MultiControlLinkBean;
 import com.tuya.smart.home.sdk.TuyaHomeSdk;
 import com.tuya.smart.home.sdk.bean.HomeBean;
+import com.tuya.smart.home.sdk.bean.scene.PreCondition;
+import com.tuya.smart.home.sdk.bean.scene.SceneBean;
+import com.tuya.smart.home.sdk.bean.scene.SceneCondition;
+import com.tuya.smart.home.sdk.bean.scene.SceneTask;
+import com.tuya.smart.home.sdk.bean.scene.condition.rule.BoolRule;
 import com.tuya.smart.home.sdk.callback.ITuyaHomeResultCallback;
 import com.tuya.smart.home.sdk.callback.ITuyaResultCallback;
 import com.tuya.smart.sdk.api.IDeviceListener;
@@ -94,6 +99,7 @@ import com.tuya.smart.sdk.api.IResultCallback;
 import com.tuya.smart.sdk.api.ITuyaDataCallback;
 import com.tuya.smart.sdk.api.ITuyaDevice;
 import com.tuya.smart.sdk.bean.DeviceBean;
+import com.tuya.smart.sdk.enums.TYDevicePublishModeEnum;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -116,7 +122,7 @@ public class Rooms extends AppCompatActivity
     public static final String FCM_MESSAGE_URL = "https://fcm.googleapis.com/fcm/send";
     final static private String serverKey = "key=" + "AAAAQmygXvw:APA91bFt5CiONiZPDDj4_kz9hmKXlL1cjfTa_ZNGfobMPmt0gamhzEoN2NHiOxypCDr_r5yfpLvJy-bQSgrykXvaqKkThAniTr-0hpXPBrXm7qWThMmkiaN9o6qaUqfIUwStMMuNedTw";
     final static private String contentType = "application/json";
-    private TextView hotelName ;
+    private TextView hotelName , devicesCount ;
     private ListView devicesListView , roomsListView ;
     static List<ROOM> list ;
     private String getRoomsUrl = Login.SelectedHotel.URL+"getAllRooms.php" ;
@@ -163,6 +169,9 @@ public class Rooms extends AppCompatActivity
     ListView gatewaysListView ;
     ExtendedBluetoothDevice TheFoundGateway ;
     private ConfigureGatewayInfo configureGatewayInfo;
+    List<SceneBean> SCENES ;
+    List<String> IMAGES ;
+    DatabaseReference ServerDevice ;
 
 
 
@@ -181,23 +190,23 @@ public class Rooms extends AppCompatActivity
         setTuyaApplication();
         getRooms();
         getServiceUsersFromFirebase();
-        FirebaseMessaging.getInstance().getToken()
-                .addOnCompleteListener(new OnCompleteListener<String>()
-                {
-                    @Override
-                    public void onComplete(@NonNull Task<String> task)
-                    {
-                        if (!task.isSuccessful())
-                        {
-                            //Log.w(TAG, "Fetching FCM registration token failed", task.getException());
-                            return;
-                        }
-                        // Get new FCM registration token
-                        String token = task.getResult();
-                        Log.e("tokeneee" , token);
-                        sendRegistrationToServer(token);
-                    }
-                });
+//        FirebaseMessaging.getInstance().getToken().addOnCompleteListener(new OnCompleteListener<String>()
+//                {
+//                    @Override
+//                    public void onComplete(@NonNull Task<String> task)
+//                    {
+//                        if (!task.isSuccessful())
+//                        {
+//                            //Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+//                            return;
+//                        }
+//                        String token = task.getResult();
+//                        Log.e("tokeneee" , token);
+//                        sendRegistrationToServer(token);
+//                        ServerDevice.child("status").setValue("1");
+//                        ServerDevice.child("token").setValue(token);
+//                    }
+//                });
         hideSystemUI();
     }
 
@@ -220,10 +229,12 @@ public class Rooms extends AppCompatActivity
             lockDB.removeAll();
             lockDB.insertLock("off");
         }
+        SCENES = new ArrayList<>();
         configureGatewayInfo = new ConfigureGatewayInfo();
         gatewaysListView = (ListView) findViewById(R.id.scanLockGatewayList);
         searchText = (EditText) findViewById(R.id.search_text);
         searchBtn = (Button) findViewById(R.id.button16);
+        devicesCount = findViewById(R.id.textView26);
         searchBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -244,11 +255,7 @@ public class Rooms extends AppCompatActivity
                         }
                         if (Results.size() > 0 ) {
                             searchBtn.setText("X");
-//                            String[] x = new String[Results.size()];
-//                            for (int j=0; j<Results.size(); j++) {
-//                                x[j] = Results.get(j);
-//                            }
-                            //ArrayAdapter<String> ad = new ArrayAdapter<String>(act,R.layout.spinners_item,x);
+                            devicesCount.setText(String.valueOf(Results.size()));
                             Devices_Adapter adapter = new Devices_Adapter(Results,act);
                             devicesListView.setAdapter(adapter);
                         }
@@ -260,11 +267,7 @@ public class Rooms extends AppCompatActivity
                 else {
                     if (devicesListView.getVisibility() == View.VISIBLE) {
                         searchBtn.setText("Search");
-//                        String[] dd = new String[Devices.size()];
-//                        for (int i=0;i<Devices.size();i++)
-//                        {
-//                            dd[i] = Devices.get(i).name ;
-//                        }
+                        devicesCount.setText(String.valueOf(Devices.size()));
                         Devices_Adapter adapter = new Devices_Adapter(Devices,act);
                         devicesListView.setAdapter(adapter);
                     }
@@ -291,6 +294,7 @@ public class Rooms extends AppCompatActivity
         roomsListView = (ListView) findViewById(R.id.RoomsListView);
         devicesListView = (ListView) findViewById(R.id.DevicesListView);
         database = FirebaseDatabase.getInstance("https://hotelservices-ebe66.firebaseio.com/");
+        ServerDevice = database.getReference(Login.SelectedHotel.ProjectName+"ServerDevice");
         ServiceUsers = database.getReference(Login.SelectedHotel.ProjectName+"ServiceUsers");
         FireRooms = new ArrayList<DatabaseReference>();
         iTuyaDeviceMultiControl = TuyaHomeSdk.getDeviceMultiControlInstance();
@@ -648,19 +652,20 @@ public class Rooms extends AppCompatActivity
                     int seconds = (int) (millis / 1000);
                     int minutes = seconds / 60;
                     seconds = seconds % 60;
-                    //Handlers[finalT].postDelayed(this,1000) ;
-                    Handler timerDoorHandler = new Handler();
-                    timerDoorHandler.postDelayed(this,1000) ;
+                    Handlers[finalT] = new Handler();
+                    Handlers[finalT].postDelayed(this,1000) ;
+                    //Handler timerDoorHandler = new Handler();
+                    //timerDoorHandler.postDelayed(this,1000) ;
                     DoorPeriod[finalT] = System.currentTimeMillis() - DoorStart[finalT] ;
                     Log.d("theSTATUSDOOR"+list.get(finalT).RoomNumber , String.valueOf(DOORSTATUS[finalT])+" " +minutes+":"+seconds);
                     if ( DoorPeriod[finalT] >=  THEDOORWARNING_INTERVAL  && DOORSTATUS[finalT])
                     {
                         FireRooms.get(finalT).child("doorStatus").setValue(2);
-                        timerDoorHandler.removeCallbacks(DoorRunnable[finalT]);
+                        Handlers[finalT].removeCallbacks(DoorRunnable[finalT]);
                     }
                     else if (DoorPeriod[finalT] >=  THEDOORWARNING_INTERVAL  && !DOORSTATUS[finalT])
                     {
-                        timerDoorHandler.removeCallbacks(DoorRunnable[finalT]);
+                        Handlers[finalT].removeCallbacks(DoorRunnable[finalT]);
                     }
 
                 }
@@ -848,6 +853,7 @@ public class Rooms extends AppCompatActivity
                 else
                 {
                     Toast.makeText(act,String.valueOf(Devices.size()),Toast.LENGTH_LONG).show();
+                    devicesCount.setText(String.valueOf(Devices.size()));
                     Log.d("devicesAre " ,String.valueOf(Devices.size()) );
                     for (int i = 0 ; i < Devices.size() ; i++ )
                     {
@@ -952,9 +958,9 @@ public class Rooms extends AppCompatActivity
                         Log.d("unrecognized " , String.valueOf(UnRecognizedDevices_B.size()+" all "+Devices.size() ));
                     }
                 }
-
-                setDevicesListiners();
-                setFireRoomsListiner();
+                //setDevicesListiners();
+                //setFireRoomsListiner();
+                getSceneBGs();
             }
             @Override
             public void onError(String errorCode, String errorMsg)
@@ -1111,11 +1117,9 @@ public class Rooms extends AppCompatActivity
     public void setDevicesListiners()
     {
         Toast.makeText(act,"Rooms are : "+list.size(),Toast.LENGTH_LONG).show();
-        Log.d("Rooms" , "Rooms are : "+list.size());
         for (int i=0;i<list.size();i++)
         {
             int finalI3 = i;
-            if(list.get(i).Status != 1) {
                 if(list.get(i).getDOORSENSOR_B() != null )
                 {
                     int finalI = i;
@@ -1129,27 +1133,26 @@ public class Rooms extends AppCompatActivity
 
                                 if (dpStr.get("doorcontact_state").toString().equals("true") )
                                 {
-                                    //ToastMaker.MakeToast("Door is Open" , act);
-                                    //myRefDoor.setValue("1");
                                     FireRooms.get(finalI).child("doorStatus").setValue(1);
-                                    //thermostatStartTime = System.currentTimeMillis() ;
                                     start[finalI] = System.currentTimeMillis() ;
                                     DoorStart[finalI] = System.currentTimeMillis() ;
                                     AC_SENARIO_Status[finalI] = true ;
                                     DOORSTATUS[finalI] = true ;
                                     period[finalI] = 0;
                                     DoorPeriod[finalI]= 0;
-                                    TempRonnableList[finalI].run();
+                                    //TempRonnableList[finalI].run();
                                     DoorRunnable[finalI].run();
-                                    //x[0] = true ;
-                                    //theThermoPeriod = 0 ;
-                                    //TempRonnable.run();
+                                    setDoorOpenClosed(list.get(finalI3),"1");
+
                                 }
                                 else
                                 {
+                                    if (Handlers[finalI] != null) {
+                                        Handlers[finalI].removeCallbacks(DoorRunnable[finalI]);
+                                    }
                                     FireRooms.get(finalI).child("doorStatus").setValue(0);
                                     DOORSTATUS[finalI] = false ;
-                                    //ToastMaker.MakeToast("Door Closed" , act);
+                                    setDoorOpenClosed(list.get(finalI3),"0");
                                 }
                             }
                         }
@@ -1190,250 +1193,216 @@ public class Rooms extends AppCompatActivity
                         @Override
                         public void onDpUpdate(String devId, Map<String, Object> dpStr)
                         {
-                            //Log.d("serviceswitch" , "1 "+list.get(finalI1).getSERVICE_B().dps.get("1").toString()+" 2 "+list.get(finalI1).getSERVICE_B().dps.get("2").toString()+" 3 "+list.get(finalI1).getSERVICE_B().dps.get("3").toString()+ "    c "+CLEANUP[finalI1]+" l "+LAUNDRY[finalI1]+" d "+DND[finalI1]+"    "+dpStr.toString());
-                            if (dpStr.get("switch_2") != null)
-                            {
-                                if (dpStr.get("switch_2").toString().equals("true") && !CLEANUP[finalI1])
-                                {
-                                    Calendar c = Calendar.getInstance(Locale.getDefault());
-                                    long time = c.getTimeInMillis();
-                                    CLEANUP[finalI1] = true ;
-                                    FireRooms.get(finalI1).child("Cleanup").setValue(time);
-                                    FireRooms.get(finalI1).child("dep").setValue("Cleanup");
-                                    addCleanupOrder(list.get(finalI1),finalI1);
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Cleanup") || u.department.equals("Service")) {
-                                            makemessage(u.token,"Cleanup",true,list.get(finalI1).RoomNumber);
-                                        }
-                                    }
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true"))
-                                    {
-                                        DND[finalI1] = false ;
-                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                        FireRooms.get(finalI1).child("DND").setValue(0);
-                                        //cancelDNDOrder(list.get(finalI1),finalI1);
-                                    }
-                                }
-                                else if (dpStr.get("switch_2").toString().equals("false") && CLEANUP[finalI1])
-                                {
-                                    CLEANUP[finalI1] = false ;
-                                    cancelCleanupOrder(list.get(finalI1),finalI1);
-                                    FireRooms.get(finalI1).child("Cleanup").setValue(0);
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Cleanup") || u.department.equals("Service")) {
-                                            makemessage(u.token,"Cleanup",false,list.get(finalI1).RoomNumber);
-                                        }
-                                    }
-                                    if (DND[finalI1])
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue("DND");
-                                        //cancelCleanupOrder(list.get(finalI1),finalI1);
-                                    }
-                                    else if (LAUNDRY[finalI1])
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue("Laundry");
-                                    }
-                                    else
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue(0);
-                                    }
-
-
-                                }
-                            }
-                            if(dpStr.get("switch_3") != null)
-                            {
-                                if (dpStr.get("switch_3").toString().equals("true") && !LAUNDRY[finalI1])
-                                {
-                                    Calendar c = Calendar.getInstance(Locale.getDefault());
-                                    long time = c.getTimeInMillis();
-                                    LAUNDRY[finalI1] = true ;
-                                    addLaundryOrder(list.get(finalI1) , finalI1);
-                                    FireRooms.get(finalI1).child("Laundry").setValue(time);
-                                    FireRooms.get(finalI1).child("dep").setValue("Laundry");
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Laundry") || u.department.equals("Service")) {
-                                            makemessage(u.token,"Laundry",true,list.get(finalI1).RoomNumber);
-                                        }
-                                    }
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true"))
-                                    {
-                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                        DND[finalI1] = false ;
-                                        FireRooms.get(finalI1).child("DND").setValue(0);
-                                        //cancelDNDOrder(list.get(finalI1) , finalI1);
-                                    }
-                                }
-                                else if(dpStr.get("switch_3").toString().equals("false") && LAUNDRY[finalI1])
-                                {
-                                    LAUNDRY[finalI1] = false ;
-                                    cancelLaundryOrder(list.get(finalI1) , finalI1);
-                                    FireRooms.get(finalI1).child("Laundry").setValue(0);
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Laundry") || u.department.equals("Service")) {
-                                            makemessage(u.token,"Laundry",false,list.get(finalI1).RoomNumber);
-                                        }
-                                    }
-                                    if (DND[finalI1])
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue("DND");
-                                    }
-                                    else if (CLEANUP[finalI1])
-                                    {
+                            Log.d("servicePressed",list.get(finalI3).roomStatus+" "+dpStr);
+                            if (list.get(finalI3).roomStatus == 2) {
+                                if (dpStr.get("switch_2") != null) {
+                                    if (dpStr.get("switch_2").toString().equals("true") && !CLEANUP[finalI1]) {
+                                        Calendar c = Calendar.getInstance(Locale.getDefault());
+                                        long time = c.getTimeInMillis();
+                                        CLEANUP[finalI1] = true;
+                                        FireRooms.get(finalI1).child("Cleanup").setValue(time);
                                         FireRooms.get(finalI1).child("dep").setValue("Cleanup");
-                                    }
-                                    else
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue(0);
-                                    }
-                                }
-                            }
-                            if (dpStr.get("switch_1") != null)
-                            {
-                                if (dpStr.get("switch_1").toString().equals("true") && !DND[finalI1])
-                                {
-                                    Calendar c = Calendar.getInstance(Locale.getDefault());
-                                    long time = c.getTimeInMillis();
-                                    DND[finalI1] = true ;
-                                    FireRooms.get(finalI1).child("DND").setValue(time);
-                                    FireRooms.get(finalI1).child("dep").setValue("DND");
-                                    //addDNDOrder(list.get(finalI1) , finalI1);
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Service") || u.department.equals("Cleanup") || u.department.equals("Laundry") || u.department.equals("RoomService")) {
-                                            makemessage(u.token, "DND", true, list.get(finalI1).RoomNumber);
+                                        addCleanupOrder(list.get(finalI1), finalI1);
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Cleanup") || u.department.equals("Service")) {
+                                                makemessage(u.token, "Cleanup", true, list.get(finalI1).RoomNumber);
+                                            }
                                         }
-                                    }
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("2").toString().equals("true"))
-                                    {
-                                        list.get(finalI1).getSERVICE().publishDps("{\"2\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                        CLEANUP[finalI1] = false ;
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true")) {
+//                                        DND[finalI1] = false ;
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        FireRooms.get(finalI1).child("DND").setValue(0);
+//                                    }
+                                    } else if (dpStr.get("switch_2").toString().equals("false") && CLEANUP[finalI1]) {
+                                        CLEANUP[finalI1] = false;
+                                        cancelCleanupOrder(list.get(finalI1), finalI1);
                                         FireRooms.get(finalI1).child("Cleanup").setValue(0);
-                                        cancelCleanupOrder(list.get(finalI1) , finalI1);
-                                    }
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("3").toString().equals("true"))
-                                    {
-                                        list.get(finalI1).getSERVICE().publishDps("{\"3\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Cleanup") || u.department.equals("Service")) {
+                                                makemessage(u.token, "Cleanup", false, list.get(finalI1).RoomNumber);
                                             }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                        LAUNDRY[finalI1] = false ;
-                                        FireRooms.get(finalI1).child("Laundry").setValue(0);
-                                        cancelLaundryOrder(list.get(finalI1) , finalI1);
-                                    }
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("4").toString().equals("true"))
-                                    {
-                                        list.get(finalI1).getSERVICE().publishDps("{\"4\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                        CHECKOUT[finalI1] = false ;
-                                        FireRooms.get(finalI1).child("Checkout").setValue(0);
-                                        cancelCheckoutOrder(list.get(finalI1) , finalI1);
-                                    }
-                                }
-                                else if (dpStr.get("switch_1").toString().equals("false") && DND[finalI1])
-                                {
-                                    DND[finalI1] = false ;
-                                    //cancelDNDOrder(list.get(finalI1) , finalI1);
-                                    FireRooms.get(finalI1).child("DND").setValue(0);
-                                    for(ServiceEmps u : Emps) {
-                                        if (u.department.equals("Service") || u.department.equals("Cleanup") || u.department.equals("Laundry") || u.department.equals("RoomService")) {
-                                            makemessage(u.token, "DND", false, list.get(finalI1).RoomNumber);
+                                        }
+                                        if (DND[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("DND");
+                                        } else if (LAUNDRY[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("Laundry");
+                                        } else {
+                                            FireRooms.get(finalI1).child("dep").setValue(0);
                                         }
                                     }
-                                    if (LAUNDRY[finalI1])
-                                    {
+                                }
+                                if (dpStr.get("switch_3") != null) {
+                                    if (dpStr.get("switch_3").toString().equals("true") && !LAUNDRY[finalI1]) {
+                                        Calendar c = Calendar.getInstance(Locale.getDefault());
+                                        long time = c.getTimeInMillis();
+                                        LAUNDRY[finalI1] = true;
+                                        addLaundryOrder(list.get(finalI1), finalI1);
+                                        FireRooms.get(finalI1).child("Laundry").setValue(time);
                                         FireRooms.get(finalI1).child("dep").setValue("Laundry");
-                                    }
-                                    else if (CLEANUP[finalI1])
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue("Cleanup");
-                                    }
-                                    else
-                                    {
-                                        FireRooms.get(finalI1).child("dep").setValue(0);
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Laundry") || u.department.equals("Service")) {
+                                                makemessage(u.token, "Laundry", true, list.get(finalI1).RoomNumber);
+                                            }
+                                        }
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true"))
+//                                    {
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        DND[finalI1] = false ;
+//                                        FireRooms.get(finalI1).child("DND").setValue(0);
+//                                    }
+                                    } else if (dpStr.get("switch_3").toString().equals("false") && LAUNDRY[finalI1]) {
+                                        LAUNDRY[finalI1] = false;
+                                        cancelLaundryOrder(list.get(finalI1), finalI1);
+                                        FireRooms.get(finalI1).child("Laundry").setValue(0);
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Laundry") || u.department.equals("Service")) {
+                                                makemessage(u.token, "Laundry", false, list.get(finalI1).RoomNumber);
+                                            }
+                                        }
+                                        if (DND[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("DND");
+                                        } else if (CLEANUP[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("Cleanup");
+                                        } else {
+                                            FireRooms.get(finalI1).child("dep").setValue(0);
+                                        }
                                     }
                                 }
-                            }
-                            if (dpStr.get("switch_4") != null )
-                            {
-                                if (dpStr.get("switch_4").toString().equals("true") && !CHECKOUT[finalI1]){
-                                    Calendar c = Calendar.getInstance(Locale.getDefault());
-                                    long time = c.getTimeInMillis();
-                                    CHECKOUT[finalI1] = true ;
-                                    FireRooms.get(finalI1).child("Checkout").setValue(time);
-                                    FireRooms.get(finalI1).child("dep").setValue("Checkout");
-                                    addCheckoutOrder(list.get(finalI1),finalI1);
-                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true"))
-                                    {
-                                        DND[finalI1] = false ;
-                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
+                                if (dpStr.get("switch_1") != null) {
+                                    if (dpStr.get("switch_1").toString().equals("true") && !DND[finalI1]) {
+                                        Calendar c = Calendar.getInstance(Locale.getDefault());
+                                        long time = c.getTimeInMillis();
+                                        DND[finalI1] = true;
+                                        FireRooms.get(finalI1).child("DND").setValue(time);
+                                        FireRooms.get(finalI1).child("dep").setValue("DND");
+                                        addDNDOrder(list.get(finalI1), finalI1);
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Service") || u.department.equals("Cleanup") || u.department.equals("Laundry") || u.department.equals("RoomService")) {
+                                                makemessage(u.token, "DND", true, list.get(finalI1).RoomNumber);
                                             }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
+                                        }
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("2").toString().equals("true"))
+//                                    {
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"2\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        CLEANUP[finalI1] = false ;
+//                                        FireRooms.get(finalI1).child("Cleanup").setValue(0);
+//                                        cancelCleanupOrder(list.get(finalI1) , finalI1);
+//                                    }
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("3").toString().equals("true"))
+//                                    {
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"3\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        LAUNDRY[finalI1] = false ;
+//                                        FireRooms.get(finalI1).child("Laundry").setValue(0);
+//                                        cancelLaundryOrder(list.get(finalI1) , finalI1);
+//                                    }
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("4").toString().equals("true"))
+//                                    {
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"4\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        CHECKOUT[finalI1] = false ;
+//                                        FireRooms.get(finalI1).child("Checkout").setValue(0);
+//                                        cancelCheckoutOrder(list.get(finalI1) , finalI1);
+//                                    }
+                                    } else if (dpStr.get("switch_1").toString().equals("false") && DND[finalI1]) {
+                                        DND[finalI1] = false;
+                                        cancelDNDOrder(list.get(finalI1), finalI1);
                                         FireRooms.get(finalI1).child("DND").setValue(0);
-                                        //cancelDNDOrder(list.get(finalI1),finalI1);
+                                        for (ServiceEmps u : Emps) {
+                                            if (u.department.equals("Service") || u.department.equals("Cleanup") || u.department.equals("Laundry") || u.department.equals("RoomService")) {
+                                                makemessage(u.token, "DND", false, list.get(finalI1).RoomNumber);
+                                            }
+                                        }
+                                        if (LAUNDRY[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("Laundry");
+                                        } else if (CLEANUP[finalI1]) {
+                                            FireRooms.get(finalI1).child("dep").setValue("Cleanup");
+                                        } else {
+                                            FireRooms.get(finalI1).child("dep").setValue(0);
+                                        }
                                     }
                                 }
-                                else if (dpStr.get("switch_4").toString().equals("false") && CHECKOUT[finalI1]){
-                                    //Log.d("checkoutProblem" , " from here " + CheckoutStatus+dpStr.get("switch_4").toString() ) ;
-                                    CHECKOUT[finalI1] = false ;
-                                    FireRooms.get(finalI1).child("Checkout").setValue(0);
-                                    cancelCheckoutOrder(list.get(finalI1),finalI1);
+                                if (dpStr.get("switch_4") != null) {
+                                    if (dpStr.get("switch_4").toString().equals("true") && !CHECKOUT[finalI1]) {
+                                        Calendar c = Calendar.getInstance(Locale.getDefault());
+                                        long time = c.getTimeInMillis();
+                                        CHECKOUT[finalI1] = true;
+                                        FireRooms.get(finalI1).child("Checkout").setValue(time);
+                                        FireRooms.get(finalI1).child("dep").setValue("Checkout");
+                                        addCheckoutOrder(list.get(finalI1), finalI1);
+//                                    if (list.get(finalI1).getSERVICE_B().dps.get("1").toString().equals("true"))
+//                                    {
+//                                        DND[finalI1] = false ;
+//                                        list.get(finalI1).getSERVICE().publishDps("{\"1\": false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                        FireRooms.get(finalI1).child("DND").setValue(0);
+//                                        //cancelDNDOrder(list.get(finalI1),finalI1);
+//                                    }
+                                    } else if (dpStr.get("switch_4").toString().equals("false") && CHECKOUT[finalI1]) {
+                                        //Log.d("checkoutProblem" , " from here " + CheckoutStatus+dpStr.get("switch_4").toString() ) ;
+                                        CHECKOUT[finalI1] = false;
+                                        FireRooms.get(finalI1).child("Checkout").setValue(0);
+                                        cancelCheckoutOrder(list.get(finalI1), finalI1);
+                                    }
                                 }
                             }
-
                         }
                         @Override
                         public void onRemoved(String devId)
@@ -1458,79 +1427,89 @@ public class Rooms extends AppCompatActivity
                 }
                 if (list.get(i).getAC_B() !=null)
                 {
-                    int finalI2 = i;
-                    list.get(i).getAC().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            //Toast.makeText(act,list.get(finalI2).RoomNumber+"AC",Toast.LENGTH_LONG).show();
-                            if (dpStr.get("temp_current") != null)
-                            {
-                                double temp = (Integer.parseInt(dpStr.get("temp_current").toString())*0.1);
-                                FireRooms.get(finalI2).child("temp").setValue(temp) ;
-                            }
-                            if ( dpStr.get("temp_set") != null )
-                            {
-                                if (Double.parseDouble(dpStr.get("temp_set").toString()) !=  Double.parseDouble(TempSetPoint[finalI2]))
-                                {
-                                    ClientTemp[finalI2] = dpStr.get("temp_set").toString();
-                                }
-
-                            }
-                        }
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setThermostatStatus(list.get(finalI2) , "0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    int finalI2 = i;
+//                    list.get(i).getAC().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            //Toast.makeText(act,list.get(finalI2).RoomNumber+"AC",Toast.LENGTH_LONG).show();
+//                            if (dpStr.get("temp_current") != null)
+//                            {
+//                                double temp = (Integer.parseInt(dpStr.get("temp_current").toString())*0.1);
+//                                FireRooms.get(finalI2).child("temp").setValue(temp) ;
+//                            }
+//                            if ( dpStr.get("temp_set") != null )
+//                            {
+//                                if (Double.parseDouble(dpStr.get("temp_set").toString()) !=  Double.parseDouble(TempSetPoint[finalI2]))
+//                                {
+//                                    ClientTemp[finalI2] = dpStr.get("temp_set").toString();
+//                                }
+//
+//                            }
+//                        }
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setThermostatStatus(list.get(finalI2) , "0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getPOWER_B() != null)
                 {
-
                     list.get(i).getPOWER().registerDeviceListener(new IDeviceListener() {
                         @Override
                         public void onDpUpdate(String devId, Map<String, Object> dpStr)
                         {
-                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"power",Toast.LENGTH_LONG).show();
-                            //Log.d("powerdps" , list.get(finalI3).getPOWER_B().dps.toString() +" "+ dpStr);
-                        /*
-                        if (list.get(finalI3).getPOWER_B().dps.get("1").toString().equals("true"))
-                        {
-                            FireRooms.get(finalI3).child("powerStatus").setValue(1);
-                        }
-                        else
-                        {
-                            FireRooms.get(finalI3).child("powerStatus").setValue(0);
-                        }
-
-                         */
-                            if (dpStr.get("switch_1") != null)
-                            {
-                                String S1 = dpStr.get("switch_1").toString() ;
-                                if (S1.equals("false"))
-                                {
-                                    FireRooms.get(finalI3).child("powerStatus").setValue(0);
-                                    //setPowerOnOff("0");
+                            String DP1 ;
+                            String DP2 ;
+                            String DP8 ;
+                            Log.d("powerReact" , dpStr.toString());
+//                            if (DP1.equals("false") && DP2.equals("false")) {
+//                                Log.d("powerReact" , "all off");
+//                                FireRooms.get(finalI3).child("powerStatus").setValue(0);
+//                                setPowerOnOff(list.get(finalI3),"0");
+//                            }
+//                            else if (DP1.equals("true") && DP2.equals("false")) {
+//                                Log.d("powerReact" , "one on tow off");
+//                            }
+//                            else if (DP1.equals("true") && DP2.equals("true")) {
+//                                Log.d("powerReact" , "one on tow on");
+//                                FireRooms.get(finalI3).child("powerStatus").setValue(2);
+//                                setPowerOnOff(list.get(finalI3),"2");
+//                            }
+                            if (dpStr != null) {
+                                if (dpStr.get("switch_1") != null) {
+                                    DP1 = dpStr.get("switch_1").toString();
+                                    if (DP1.equals("false")) {
+                                        FireRooms.get(finalI3).child("powerStatus").setValue(0);
+                                        setPowerOnOff(list.get(finalI3),"0");
+                                    }
                                 }
-                                else
-                                {
-                                    FireRooms.get(finalI3).child("powerStatus").setValue(1);
-                                    //setPowerOnOff("1");
+                                if (dpStr.get("switch_2") != null) {
+                                    DP2 = dpStr.get("switch_2").toString();
+                                    if (DP2.equals("true")) {
+                                        FireRooms.get(finalI3).child("powerStatus").setValue(2);
+                                        setPowerOnOff(list.get(finalI3),"2");
+                                    }
+                                    else {
+                                        FireRooms.get(finalI3).child("powerStatus").setValue(1);
+                                        setPowerOnOff(list.get(finalI3),"1");
+                                    }
+
                                 }
                             }
                         }
@@ -1558,437 +1537,487 @@ public class Rooms extends AppCompatActivity
                 }
                 if (list.get(i).getCURTAIN_B() != null)
                 {
-                    list.get(i).getCURTAIN().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"curtain",Toast.LENGTH_LONG).show();
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setCurtainSwitchStatus(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    list.get(i).getCURTAIN().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"curtain",Toast.LENGTH_LONG).show();
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setCurtainSwitchStatus(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getMOTIONSENSOR_B() != null )
                 {
-                    list.get(i).getMOTIONSENSOR().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            Log.d("motion" , dpStr.toString());
-                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"motion",Toast.LENGTH_LONG).show();
-                            if (AC_SENARIO_Status[finalI3])
-                            {
-                                AC_SENARIO_Status[finalI3] = false ;
-                            }
-                            else
-                            {
-                                String t ="";
-                                if (ClientTemp[finalI3].equals("0"))
-                                {
-                                    t="240";
-                                }
-                                else
-                                {
-                                    t = ClientTemp[finalI3] ;
-                                }
-                                String dp = "{\" 2\": "+t+"}";
-                                if (list.get(finalI3).getAC() != null )
-                                {
-                                    list.get(finalI3).getAC().publishDps(dp, new IResultCallback() {
-                                        @Override
-                                        public void onError(String code, String error) {
-
-                                        }
-
-                                        @Override
-                                        public void onSuccess()
-                                        {
-                                            //ToastMaker.MakeToast("Temp Set to Client Temp " , act);
-
-                                        }
-                                    });
-                                }
-
-
-                            }
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setMotionSensorStatus(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    list.get(i).getMOTIONSENSOR().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            Log.d("motion" , dpStr.toString());
+//                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"motion",Toast.LENGTH_LONG).show();
+//                            if (AC_SENARIO_Status[finalI3])
+//                            {
+//                                AC_SENARIO_Status[finalI3] = false ;
+//                            }
+//                            else
+//                            {
+//                                String t ="";
+//                                if (ClientTemp[finalI3].equals("0"))
+//                                {
+//                                    t="240";
+//                                }
+//                                else
+//                                {
+//                                    t = ClientTemp[finalI3] ;
+//                                }
+//                                String dp = "{\" 2\": "+t+"}";
+//                                if (list.get(finalI3).getAC() != null )
+//                                {
+//                                    list.get(finalI3).getAC().publishDps(dp, new IResultCallback() {
+//                                        @Override
+//                                        public void onError(String code, String error) {
+//
+//                                        }
+//
+//                                        @Override
+//                                        public void onSuccess()
+//                                        {
+//                                            //ToastMaker.MakeToast("Temp Set to Client Temp " , act);
+//
+//                                        }
+//                                    });
+//                                }
+//
+//
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setMotionSensorStatus(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getSWITCH1_B() != null)
                 {
-                    list.get(i).getSWITCH1().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            if (dpStr.get("switch_3") != null ){
-
-                                if (dpStr.get("switch_3").toString().equals("true")) {
-
-                                    if (list.get(finalI3).getSWITCH1_B().dps.get("2").toString().equals("true")) {
-                                        list.get(finalI3).getSWITCH1().publishDps("{\" 2\":false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                    }
-                                    if (list.get(finalI3).getSWITCH1_B().dps.get("1").toString().equals("true")) {
-                                        list.get(finalI3).getSWITCH1().publishDps("{\" 1\":false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                    }
-                                    if (list.get(finalI3).getSWITCH2_B() != null ) {
-                                        if (list.get(finalI3).getSWITCH2_B().dps.get("1").toString().equals("true")) {
-                                            list.get(finalI3).getSWITCH2().publishDps("{\" 1\":false}", new IResultCallback() {
-                                                @Override
-                                                public void onError(String code, String error) {
-
-                                                }
-
-                                                @Override
-                                                public void onSuccess() {
-
-                                                }
-                                            });
-                                        }
-                                        if (list.get(finalI3).getSWITCH2_B().dps.get("2").toString().equals("true")) {
-                                            list.get(finalI3).getSWITCH2().publishDps("{\" 2\":false}", new IResultCallback() {
-                                                @Override
-                                                public void onError(String code, String error) {
-
-                                                }
-
-                                                @Override
-                                                public void onSuccess() {
-
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                            if (dpStr.get("switch_2") != null ){
-                                if (dpStr.get("switch_2").toString().equals("true")){
-
-                                    if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
-                                        list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                    }
-                                }
-                                else {
-
-                                }
-                            }
-                            if (dpStr.get("switch_1") != null ){
-//                                                if (dpStr.get("switch_3").toString().equals("true")){
-//                                                    Button b1 = (Button)findViewById(R.id.button17);
-//                                                    b1.setBackgroundResource(R.drawable.light_on);
+//                    list.get(i).getSWITCH1().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            if (dpStr.get("switch_3") != null ){
+//
+//                                if (dpStr.get("switch_3").toString().equals("true")) {
+//
+//                                    if (list.get(finalI3).getSWITCH1_B().dps.get("2").toString().equals("true")) {
+//                                        list.get(finalI3).getSWITCH1().publishDps("{\" 2\":false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                    }
+//                                    if (list.get(finalI3).getSWITCH1_B().dps.get("1").toString().equals("true")) {
+//                                        list.get(finalI3).getSWITCH1().publishDps("{\" 1\":false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                    }
+//                                    if (list.get(finalI3).getSWITCH2_B() != null ) {
+//                                        if (list.get(finalI3).getSWITCH2_B().dps.get("1").toString().equals("true")) {
+//                                            list.get(finalI3).getSWITCH2().publishDps("{\" 1\":false}", new IResultCallback() {
+//                                                @Override
+//                                                public void onError(String code, String error) {
+//
 //                                                }
-//                                                else {
-//                                                    Button b1 = (Button)findViewById(R.id.button17);
-//                                                    b1.setBackgroundResource(R.drawable.group_62);
+//
+//                                                @Override
+//                                                public void onSuccess() {
+//
 //                                                }
-                                if (dpStr.get("switch_1").toString().equals("true")){
-                                    if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
-                                        list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
-                                            @Override
-                                            public void onError(String code, String error) {
-
-                                            }
-
-                                            @Override
-                                            public void onSuccess() {
-
-                                            }
-                                        });
-                                    }
-                                }
-                                else {
-                                }
-
-                            }
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setSwitch1Status(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                                            });
+//                                        }
+//                                        if (list.get(finalI3).getSWITCH2_B().dps.get("2").toString().equals("true")) {
+//                                            list.get(finalI3).getSWITCH2().publishDps("{\" 2\":false}", new IResultCallback() {
+//                                                @Override
+//                                                public void onError(String code, String error) {
+//
+//                                                }
+//
+//                                                @Override
+//                                                public void onSuccess() {
+//
+//                                                }
+//                                            });
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            if (dpStr.get("switch_2") != null ){
+//                                if (dpStr.get("switch_2").toString().equals("true")){
+//
+//                                    if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
+//                                        list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                    }
+//                                }
+//                                else {
+//
+//                                }
+//                            }
+//                            if (dpStr.get("switch_1") != null ){
+////                                                if (dpStr.get("switch_3").toString().equals("true")){
+////                                                    Button b1 = (Button)findViewById(R.id.button17);
+////                                                    b1.setBackgroundResource(R.drawable.light_on);
+////                                                }
+////                                                else {
+////                                                    Button b1 = (Button)findViewById(R.id.button17);
+////                                                    b1.setBackgroundResource(R.drawable.group_62);
+////                                                }
+//                                if (dpStr.get("switch_1").toString().equals("true")){
+//                                    if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
+//                                        list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
+//                                            @Override
+//                                            public void onError(String code, String error) {
+//
+//                                            }
+//
+//                                            @Override
+//                                            public void onSuccess() {
+//
+//                                            }
+//                                        });
+//                                    }
+//                                }
+//                                else {
+//                                }
+//
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setSwitch1Status(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getSWITCH2_B() != null)
                 {
-                    list.get(i).getSWITCH2().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            Log.d("switch2Data" , dpStr.toString());
-                            if (dpStr.get("switch_1") != null ) {
-                                if (dpStr.get("switch_1").toString().equals("true")) {
-                                    if (list.get(finalI3).getSWITCH1_B() != null) {
-                                        if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
-                                            list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
-                                                @Override
-                                                public void onError(String code, String error) {
-
-                                                }
-
-                                                @Override
-                                                public void onSuccess() {
-
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                            if (dpStr.get("switch_2") != null ) {
-                                if (dpStr.get("switch_2").toString().equals("true")) {
-                                    if (list.get(finalI3).getSWITCH1_B() != null) {
-                                        if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
-                                            list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
-                                                @Override
-                                                public void onError(String code, String error) {
-
-                                                }
-
-                                                @Override
-                                                public void onSuccess() {
-
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setSwitch2Status(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    list.get(i).getSWITCH2().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            Log.d("switch2Data" , dpStr.toString());
+//                            if (dpStr.get("switch_1") != null ) {
+//                                if (dpStr.get("switch_1").toString().equals("true")) {
+//                                    if (list.get(finalI3).getSWITCH1_B() != null) {
+//                                        if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
+//                                            list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
+//                                                @Override
+//                                                public void onError(String code, String error) {
+//
+//                                                }
+//
+//                                                @Override
+//                                                public void onSuccess() {
+//
+//                                                }
+//                                            });
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                            if (dpStr.get("switch_2") != null ) {
+//                                if (dpStr.get("switch_2").toString().equals("true")) {
+//                                    if (list.get(finalI3).getSWITCH1_B() != null) {
+//                                        if (list.get(finalI3).getSWITCH1_B().dps.get("3").toString().equals("true")) {
+//                                            list.get(finalI3).getSWITCH1().publishDps("{\" 3\":false}", new IResultCallback() {
+//                                                @Override
+//                                                public void onError(String code, String error) {
+//
+//                                                }
+//
+//                                                @Override
+//                                                public void onSuccess() {
+//
+//                                                }
+//                                            });
+//                                        }
+//                                    }
+//                                }
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setSwitch2Status(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getSWITCH3_B() != null)
                 {
-                    list.get(i).getSWITCH3().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"switch3",Toast.LENGTH_LONG).show();
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setSwitch3Status(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    list.get(i).getSWITCH3().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"switch3",Toast.LENGTH_LONG).show();
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setSwitch3Status(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
                 if (list.get(i).getSWITCH4_B() != null)
                 {
-                    list.get(i).getSWITCH4().registerDeviceListener(new IDeviceListener() {
-                        @Override
-                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
-                        {
-                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"switch4",Toast.LENGTH_LONG).show();
-                            Log.d("switch4" , dpStr.toString() );
-                            if ( dpStr.get("switch_1") != null )
-                            {
-                                if (dpStr.get("switch_1").toString().equals("true")) {
-                                    if (list.get(finalI3).getLock() != null) {
-                                        Log.d("switch4", list.get(finalI3).getLock().getLockName());
-                                        TTLockClient.getDefault().controlLock(ControlAction.UNLOCK, list.get(finalI3).getLock().getLockData(), list.get(finalI3).getLock().getLockMac(), new ControlLockCallback() {
-                                            @Override
-                                            public void onControlLockSuccess(ControlLockResult controlLockResult) {
-                                                //Toast.makeText(act,"lock is unlock  success!",Toast.LENGTH_LONG).show();
-                                                //d.dismiss();
-                                                //ToastMaker.MakeToast("Door Opened",act);
-                                                Log.d("switch4", "open");
-                                                list.get(finalI3).getSWITCH4().publishDps("{\" 1\":false}", new IResultCallback() {
-                                                    @Override
-                                                    public void onError(String code, String error) {
-
-                                                    }
-
-                                                    @Override
-                                                    public void onSuccess() {
-
-                                                    }
-                                                });
-                                            }
-
-                                            @Override
-                                            public void onFail(LockError error) {
-                                                // Toast.makeText(UnlockActivity.this,"unLock fail!--" + error.getDescription(),Toast.LENGTH_LONG).show();
-                                                //d.dismiss();
-                                                //ToastMaker.MakeToast("Open Fail!  "+error,act);
-                                            }
-                                        });
-                                    } else {
-                                        Log.d("switch4", "Lock in null");
-                                    }
-
-                                }
-                            }
-                        }
-
-                        @Override
-                        public void onRemoved(String devId)
-                        {
-                            setSwitch4Status(list.get(finalI3),"0");
-                        }
-                        @Override
-                        public void onStatusChanged(String devId, boolean online) {
-
-                        }
-
-                        @Override
-                        public void onNetworkStatusChanged(String devId, boolean status) {
-
-                        }
-
-                        @Override
-                        public void onDevInfoUpdate(String devId) {
-
-                        }
-                    });
+//                    list.get(i).getSWITCH4().registerDeviceListener(new IDeviceListener() {
+//                        @Override
+//                        public void onDpUpdate(String devId, Map<String, Object> dpStr)
+//                        {
+//                            //Toast.makeText(act,list.get(finalI3).RoomNumber+"switch4",Toast.LENGTH_LONG).show();
+//                            Log.d("switch4" , dpStr.toString() );
+//                            if ( dpStr.get("switch_1") != null )
+//                            {
+//                                if (dpStr.get("switch_1").toString().equals("true")) {
+//                                    if (list.get(finalI3).getLock() != null) {
+//                                        Log.d("switch4", list.get(finalI3).getLock().getLockName());
+//                                        TTLockClient.getDefault().controlLock(ControlAction.UNLOCK, list.get(finalI3).getLock().getLockData(), list.get(finalI3).getLock().getLockMac(), new ControlLockCallback() {
+//                                            @Override
+//                                            public void onControlLockSuccess(ControlLockResult controlLockResult) {
+//                                                //Toast.makeText(act,"lock is unlock  success!",Toast.LENGTH_LONG).show();
+//                                                //d.dismiss();
+//                                                //ToastMaker.MakeToast("Door Opened",act);
+//                                                Log.d("switch4", "open");
+//                                                list.get(finalI3).getSWITCH4().publishDps("{\" 1\":false}", new IResultCallback() {
+//                                                    @Override
+//                                                    public void onError(String code, String error) {
+//
+//                                                    }
+//
+//                                                    @Override
+//                                                    public void onSuccess() {
+//
+//                                                    }
+//                                                });
+//                                            }
+//
+//                                            @Override
+//                                            public void onFail(LockError error) {
+//                                                // Toast.makeText(UnlockActivity.this,"unLock fail!--" + error.getDescription(),Toast.LENGTH_LONG).show();
+//                                                //d.dismiss();
+//                                                //ToastMaker.MakeToast("Open Fail!  "+error,act);
+//                                            }
+//                                        });
+//                                    } else {
+//                                        Log.d("switch4", "Lock in null");
+//                                    }
+//
+//                                }
+//                            }
+//                        }
+//
+//                        @Override
+//                        public void onRemoved(String devId)
+//                        {
+//                            setSwitch4Status(list.get(finalI3),"0");
+//                        }
+//                        @Override
+//                        public void onStatusChanged(String devId, boolean online) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onNetworkStatusChanged(String devId, boolean status) {
+//
+//                        }
+//
+//                        @Override
+//                        public void onDevInfoUpdate(String devId) {
+//
+//                        }
+//                    });
                 }
-            }
         }
     }
 
     public void setFireRoomsListiner()
     {
         //Toast.makeText(act,"rooms "+list.size()+"   fires "+FireRooms.size() ,Toast.LENGTH_LONG).show();
-        Log.d("theProblem" , "rooms "+list.size()+"   fires "+FireRooms.size());
+        //Log.d("theProblem" , "rooms "+list.size()+"   fires "+FireRooms.size());
 
         for (int i=0;i<FireRooms.size();i++)
         {
             int finalI = i;
-            if (list.get(i).Status != 1 ) {
                 if (list.get(i).getSERVICE_B() != null) {
                     FireRooms.get(i).child("Cleanup").addValueEventListener(new ValueEventListener() {
                         @Override
                         public void onDataChange(@NonNull DataSnapshot snapshot)
                         {
-                            if (snapshot.getValue().toString().equals("0"))
-                            {
-                                CLEANUP[finalI] = false ;
-                                list.get(finalI).getSERVICE().publishDps("{\" 2\": false}", new IResultCallback() {
-                                    @Override
-                                    public void onError(String code, String error) {
+                            if (snapshot.getValue() != null) {
+                                Log.d("turnSwitchOff",snapshot.getValue().toString());
+                                if (snapshot.getValue().toString().equals("0")) {
+                                    CLEANUP[finalI] = false;
+//                                    list.get(finalI).getSERVICE().publishDps("{\" 2\": false}", new IResultCallback() {
+//                                        @Override
+//                                        public void onError(String code, String error) {
+//
+//                                        }
+//
+//                                        @Override
+//                                        public void onSuccess() {
+//
+//                                        }
+//                                    });
+                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 2\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                        @Override
+                                        public void onError(String code, String error) {
+                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 2\": false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                @Override
+                                                public void onError(String code, String error) {
+                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 2\": false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                        @Override
+                                                        public void onError(String code, String error) {
+                                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 2\": false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                @Override
+                                                                public void onError(String code, String error) {
+                                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 2\": false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                        @Override
+                                                                        public void onError(String code, String error) {
+                                                                        }
 
-                                    }
+                                                                        @Override
+                                                                        public void onSuccess() {
 
-                                    @Override
-                                    public void onSuccess() {
+                                                                        }
+                                                                    });
+                                                                }
 
-                                    }
-                                });
+                                                                @Override
+                                                                public void onSuccess() {
+
+                                                                }
+                                                            });
+                                                        }
+
+                                                        @Override
+                                                        public void onSuccess() {
+
+                                                        }
+                                                    });
+                                                }
+
+                                                @Override
+                                                public void onSuccess() {
+
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void onSuccess() {
+
+                                        }
+                                    });
+                                }
                             }
                         }
 
@@ -2001,20 +2030,83 @@ public class Rooms extends AppCompatActivity
                         @Override
                         public void onDataChange(@NonNull DataSnapshot snapshot)
                         {
-                            if (snapshot.getValue().toString().equals("0"))
-                            {
-                                LAUNDRY[finalI] = false ;
-                                list.get(finalI).getSERVICE().publishDps("{\" 3\":false}", new IResultCallback() {
-                                    @Override
-                                    public void onError(String code, String error) {
+                            if (snapshot.getValue() != null) {
+                                Log.d("turnSwitchOff",snapshot.getValue().toString());
+                                if (snapshot.getValue().toString().equals("0")) {
+                                    LAUNDRY[finalI] = false;
+//                                    list.get(finalI).getSERVICE().publishDps("{\"3\" : false}", new IResultCallback() {
+//                                        @Override
+//                                        public void onError(String code, String error) {
+//
+//                                        }
+//
+//                                        @Override
+//                                        public void onSuccess() {
+//
+//                                        }
+//                                    });
+                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                        @Override
+                                        public void onError(String code, String error) {
+                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                @Override
+                                                public void onError(String code, String error) {
+                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                        @Override
+                                                        public void onError(String code, String error) {
+                                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                @Override
+                                                                public void onError(String code, String error) {
+                                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                        @Override
+                                                                        public void onError(String code, String error) {
+                                                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\"3\" : false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                                @Override
+                                                                                public void onError(String code, String error) {
 
-                                    }
+                                                                                }
 
-                                    @Override
-                                    public void onSuccess() {
+                                                                                @Override
+                                                                                public void onSuccess() {
 
-                                    }
-                                });
+                                                                                }
+                                                                            });
+                                                                        }
+
+                                                                        @Override
+                                                                        public void onSuccess() {
+
+                                                                        }
+                                                                    });
+                                                                }
+
+                                                                @Override
+                                                                public void onSuccess() {
+
+                                                                }
+                                                            });
+                                                        }
+
+                                                        @Override
+                                                        public void onSuccess() {
+
+                                                        }
+                                                    });
+                                                }
+
+                                                @Override
+                                                public void onSuccess() {
+
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void onSuccess() {
+
+                                        }
+                                    });
+                                }
                             }
                         }
 
@@ -2027,20 +2119,82 @@ public class Rooms extends AppCompatActivity
                         @Override
                         public void onDataChange(@NonNull DataSnapshot snapshot)
                         {
-                            if (snapshot.getValue().toString().equals("0"))
-                            {
-                                CHECKOUT[finalI] = false ;
-                                list.get(finalI).getSERVICE().publishDps("{\" 4\":false}", new IResultCallback() {
-                                    @Override
-                                    public void onError(String code, String error) {
-                                        Log.d("checkout" , "not"+error) ;
-                                    }
+                            if (snapshot.getValue() != null) {
+                                if (snapshot.getValue().toString().equals("0")) {
+                                    CHECKOUT[finalI] = false;
+//                                    list.get(finalI).getSERVICE().publishDps("{\" 4\":false}", new IResultCallback() {
+//                                        @Override
+//                                        public void onError(String code, String error) {
+//                                            Log.d("checkout", "not" + error);
+//                                        }
+//
+//                                        @Override
+//                                        public void onSuccess() {
+//                                            Log.d("checkout", "done");
+//                                        }
+//                                    });
+                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                        @Override
+                                        public void onError(String code, String error) {
+                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                @Override
+                                                public void onError(String code, String error) {
+                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                        @Override
+                                                        public void onError(String code, String error) {
+                                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                @Override
+                                                                public void onError(String code, String error) {
+                                                                    TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                        @Override
+                                                                        public void onError(String code, String error) {
+                                                                            TuyaHomeSdk.newDeviceInstance(list.get(finalI).getSERVICE_B().devId).publishDps("{\" 4\":false}", TYDevicePublishModeEnum.TYDevicePublishModeAuto, new IResultCallback() {
+                                                                                @Override
+                                                                                public void onError(String code, String error) {
 
-                                    @Override
-                                    public void onSuccess() {
-                                        Log.d("checkout" , "done") ;
-                                    }
-                                });
+                                                                                }
+
+                                                                                @Override
+                                                                                public void onSuccess() {
+                                                                                    Log.d("checkout", "done");
+                                                                                }
+                                                                            });
+                                                                        }
+
+                                                                        @Override
+                                                                        public void onSuccess() {
+                                                                            Log.d("checkout", "done");
+                                                                        }
+                                                                    });
+                                                                }
+
+                                                                @Override
+                                                                public void onSuccess() {
+                                                                    Log.d("checkout", "done");
+                                                                }
+                                                            });
+                                                        }
+
+                                                        @Override
+                                                        public void onSuccess() {
+                                                            Log.d("checkout", "done");
+                                                        }
+                                                    });
+                                                }
+
+                                                @Override
+                                                public void onSuccess() {
+                                                    Log.d("checkout", "done");
+                                                }
+                                            });
+                                        }
+
+                                        @Override
+                                        public void onSuccess() {
+                                            Log.d("checkout", "done");
+                                        }
+                                    });
+                                }
                             }
                         }
 
@@ -2135,10 +2289,10 @@ public class Rooms extends AppCompatActivity
                 FireRooms.get(i).child("roomStatus").addValueEventListener(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        if (snapshot.getValue() != null ){
+                        if (snapshot.getValue() != null ) {
                             Log.d("roomChangedTo" ,snapshot.getValue().toString() );
-                            if (snapshot.getValue().toString().equals("3")){
-                                if(list.get(finalI).getPOWER() != null ){
+                            if (snapshot.getValue().toString().equals("3")) {
+                                if(list.get(finalI).getPOWER() != null ) {
                                     checkoutModeRoom(list.get(finalI));
 //                                list.get(finalI).getPOWER().publishDps("{\"1\": true}", new IResultCallback() {
 //                                    @Override
@@ -2176,8 +2330,8 @@ public class Rooms extends AppCompatActivity
 //                                    }
 //                                });
                                 }
-
                             }
+                            list.get(finalI).roomStatus = Integer.parseInt(snapshot.getValue().toString());
                         }
                     }
 
@@ -2225,7 +2379,6 @@ public class Rooms extends AppCompatActivity
                     }
                 });
             }
-        }
     }
 
     public void setRoomStatusListiner(){
@@ -2297,14 +2450,9 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onResponse(String response)
                 {
-                    //loading.stop();
                     if (Integer.parseInt(response) > 0 )
                     {
-                        //Toast.makeText(act,room.RoomNumber+" CleanUp",Toast.LENGTH_LONG).show();
-                        //CLEANUP = true ;
                         room.Cleanup = Integer.parseInt(response);
-                        //FireRooms.get(index).child(dep).setValue(Integer.parseInt(response));
-                        //FireRooms.get(index).child("dep").setValue(dep);
                     }
                     else
                     {
@@ -2316,7 +2464,6 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onErrorResponse(VolleyError error)
                 {
-                    //loading.stop();
                     Toast.makeText(act , error.getMessage(),Toast.LENGTH_LONG).show();
                 }
             })
@@ -2335,7 +2482,6 @@ public class Rooms extends AppCompatActivity
                 }
 
             };
-            //Volley volley = new Volley();
             CLEANUP_QUEUE.add(addOrder);
         }
         catch (Exception e)
@@ -2348,25 +2494,17 @@ public class Rooms extends AppCompatActivity
     {
         try
         {
-            //lodingDialog loading = new lodingDialog(act);
             final String dep = "Cleanup";
             StringRequest removOrder = new StringRequest(Request.Method.POST, removeServiceOrderUrl , new Response.Listener<String>() {
                 @Override
                 public void onResponse(String response)
                 {
-                    //loading.stop();
                     if (response.equals("1")  )
                     {
-                        //Toast.makeText(act,room.RoomNumber+" Cancel CleanUp",Toast.LENGTH_LONG).show();
-                        //CLEANUP = false ;
                         room.Cleanup = 0 ;
-                        FireRooms.get(index).child(dep).setValue(0);
-
-                        //FireRooms.get(index).child("dep").setValue(0);
                     }
                     else
                     {
-                        //Toast.makeText(act , response,Toast.LENGTH_LONG).show();
                     }
 
                 }
@@ -2374,8 +2512,6 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onErrorResponse(VolleyError error)
                 {
-                    //loading.stop();
-                    // Toast.makeText(act , error.getMessage(),Toast.LENGTH_LONG).show();
                 }
             })
             {
@@ -2390,7 +2526,6 @@ public class Rooms extends AppCompatActivity
                     return params;
                 }
             };
-            //Volley volley = new Volley();
             CLEANUP_QUEUE.add(removOrder);
         }
         catch (Exception e )
@@ -2403,7 +2538,6 @@ public class Rooms extends AppCompatActivity
     {
         try
         {
-            //lodingDialog loading = new lodingDialog(act);
             final String dep = "Laundry";
             Calendar x = Calendar.getInstance(Locale.getDefault());
             long timee =  x.getTimeInMillis();
@@ -2412,14 +2546,9 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onResponse(String response)
                 {
-                    //loading.stop();
                     if (Integer.parseInt(response) > 0 )
                     {
                         room.Laundry = Integer.parseInt(response);
-                        //Toast.makeText(act,room.RoomNumber+" Laundry",Toast.LENGTH_LONG).show();
-                        //LAUNDRY = true ;
-                        //FireRooms.get(index).child(dep).setValue(Integer.parseInt(response));
-                        //FireRooms.get(index).child("dep").setValue(dep);
                     }
                     else
                     {
@@ -2431,8 +2560,6 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onErrorResponse(VolleyError error)
                 {
-                    //loading.stop();
-                    //Toast.makeText(act , error.getMessage(),Toast.LENGTH_LONG).show();
                 }
             })
             {
@@ -2450,7 +2577,6 @@ public class Rooms extends AppCompatActivity
                 }
 
             };
-            //Volley volley = new Volley();
             LAUNDRY_QUEUE.add(addOrder);
         }
         catch (Exception e)
@@ -2463,24 +2589,17 @@ public class Rooms extends AppCompatActivity
     {
         try
         {
-            //lodingDialog loading = new lodingDialog(act);
             final String dep = "Laundry";
             StringRequest removOrder = new StringRequest(Request.Method.POST, removeServiceOrderUrl , new Response.Listener<String>() {
                 @Override
                 public void onResponse(String response)
                 {
-                    //loading.stop();
                     if (response.equals("1")  )
                     {
                         room.Laundry = 0;
-                        //Toast.makeText(act,room.RoomNumber+" Cancel Laundry",Toast.LENGTH_LONG).show();
-                        //LAUNDRY = false ;
-                        FireRooms.get(index).child(dep).setValue(0);
-                        //FireRooms.get(index).child("dep").setValue(0);
                     }
                     else
                     {
-                        //Toast.makeText(act , response,Toast.LENGTH_LONG).show();
                     }
 
                 }
@@ -2488,8 +2607,6 @@ public class Rooms extends AppCompatActivity
                 @Override
                 public void onErrorResponse(VolleyError error)
                 {
-                    //loading.stop();
-                    // Toast.makeText(act , error.getMessage(),Toast.LENGTH_LONG).show();
                 }
             })
             {
@@ -2504,7 +2621,6 @@ public class Rooms extends AppCompatActivity
                     return params;
                 }
             };
-            //Volley volley = new Volley();
             LAUNDRY_QUEUE.add(removOrder);
         }
         catch (Exception e)
@@ -2515,7 +2631,6 @@ public class Rooms extends AppCompatActivity
 
     public void addDNDOrder(ROOM room , int index)
     {
-        String dep = "DND";
         Calendar x = Calendar.getInstance(Locale.getDefault());
         long timee =  x.getTimeInMillis();
         StringRequest request = new StringRequest(Request.Method.POST, insertServiceOrderUrl, new Response.Listener<String>() {
@@ -2526,10 +2641,6 @@ public class Rooms extends AppCompatActivity
                     if (Integer.parseInt(response) > 0)
                     {
                         room.DND = Integer.parseInt(response);
-                        //Toast.makeText(act,room.RoomNumber+" DND",Toast.LENGTH_LONG).show();
-                        //DND = true ;
-                        //FireRooms.get(index).child(dep).setValue(Integer.parseInt(response));
-                        //FireRooms.get(index).child("dep").setValue(dep);
                     }
                 } catch (Exception e) {
                     Log.e("DND", e.getMessage());
@@ -2540,7 +2651,6 @@ public class Rooms extends AppCompatActivity
                 , new Response.ErrorListener() {
             @Override
             public void onErrorResponse(VolleyError error) {
-                //Log.e("DNDerror", error.getMessage());
             }
         }) {
             @Override
@@ -2555,25 +2665,18 @@ public class Rooms extends AppCompatActivity
                 return params;
             }
         };
-        //Volley volley = new Volley();
         Volley.newRequestQueue(act).add(request);
     }
 
     public void cancelDNDOrder(ROOM room , int index)
     {
         String dep = "DND";
-        Calendar x = Calendar.getInstance(Locale.getDefault());
-        long timee =  x.getTimeInMillis();
         StringRequest rrr = new StringRequest(Request.Method.POST, removeServiceOrderUrl, new Response.Listener<String>() {
             @Override
             public void onResponse(String response) {
                 if (response.equals("1"))
                 {
                     room.DND = 0 ;
-                    //Toast.makeText(act,room.RoomNumber+" Cancel DND",Toast.LENGTH_LONG).show();
-                    //DND = false ;
-                    FireRooms.get(index).child(dep).setValue(0);
-                    //FireRooms.get(index).child("dep").setValue(0);
                 }
 
             }
@@ -2593,7 +2696,6 @@ public class Rooms extends AppCompatActivity
                 return params;
             }
         };
-        //Volley volley = new Volley();
         Volley.newRequestQueue(act).add(rrr);
     }
 
@@ -3410,6 +3512,85 @@ public class Rooms extends AppCompatActivity
     }
 
 
+    void setPowerOnOff(ROOM room,String status)
+    {
+        try
+        {
+            String url = Login.SelectedHotel.URL+"setCurrentPowerOnOff.php";
+            StringRequest tabR = new StringRequest(Request.Method.POST, url, new Response.Listener<String>()
+            {
+                @Override
+                public void onResponse(String response)
+                {
+                    Log.e("powerstatusChange" , response +" " + status);
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error)
+                {
+                    //ToastMaker.MakeToast(error.getMessage() , act);
+                    //Log.e("Tablet" , error.getMessage() );
+                    Log.e("powerstatusChange" , error.toString() +" " + status);
+                }
+            })
+            {
+                @Override
+                protected Map<String, String> getParams() throws AuthFailureError
+                {
+                    Map<String,String> Params = new HashMap<String,String>();
+                    Params.put("room", String.valueOf(room.RoomNumber));
+                    Params.put("id",String.valueOf(room.id) );
+                    Params.put("value" , status);
+                    return Params;
+                }
+            };
+            REQ.add(tabR);
+        }
+        catch (Exception e)
+        {
+
+        }
+    }
+
+    void setDoorOpenClosed(ROOM room,String status)
+    {
+        try
+        {
+            String url = Login.SelectedHotel.URL+"setDoorOpenClosed.php";
+            StringRequest tabR = new StringRequest(Request.Method.POST, url, new Response.Listener<String>()
+            {
+                @Override
+                public void onResponse(String response)
+                {
+                    Log.e("power " , response +" " + status);
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error)
+                {
+                    //ToastMaker.MakeToast(error.getMessage() , act);
+                    //Log.e("Tablet" , error.getMessage() );
+                }
+            })
+            {
+                @Override
+                protected Map<String, String> getParams() throws AuthFailureError
+                {
+                    Map<String,String> Params = new HashMap<String,String>();
+                    Params.put("room", String.valueOf(room.RoomNumber));
+                    Params.put("id",String.valueOf(room.id));
+                    Params.put("value" , status);
+                    return Params;
+                }
+            };
+            Volley.newRequestQueue(act).add(tabR);
+        }
+        catch (Exception e)
+        {
+
+        }
+    }
+
     void setSwitch1DB1(ROOM THEROOM){
         if (THEROOM.getSWITCH1_B() != null && THEROOM.getSWITCH2_B() != null) {
 
@@ -4013,7 +4194,7 @@ public class Rooms extends AppCompatActivity
     }
 
     void sendRegistrationToServer(String token) {
-        String url = Login.SelectedHotel.URL+ "modifyTokenForAllRooms.php" ;
+        String url = Login.SelectedHotel.URL+ "modifyTokenForNonScreenRooms.php" ;
         StringRequest re  = new StringRequest(Request.Method.POST, url, new Response.Listener<String>() {
             @Override
             public void onResponse(String response) {
@@ -4040,56 +4221,97 @@ public class Rooms extends AppCompatActivity
 
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
-            public void run()
-            {
-                if (THEROOM.getPOWER() != null )
-                {
+            public void run() {
+                if (THEROOM.getPOWER() != null ) {
                     THEROOM.getPOWER().publishDps("{\"1\": false}", new IResultCallback() {
                         @Override
                         public void onError(String code, String error) {
-                            Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, "Turn Off the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                         }
                         @Override
                         public void onSuccess() {
-                            Toast.makeText(act, "turn Off 1 success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
-                            //myRefPower.setValue(0);
+                            THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
+                                @Override
+                                public void onError(String code, String error) {
+                                    Toast.makeText(act, "Turn Off the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                                @Override
+                                public void onSuccess()
+                                {
+                                    Toast.makeText(act, "Turn Off Power Success room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                            });
                         }
                     });
-                    THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
+                }
+            }
+        });
+    }
+
+    static void powerOnRoom(ROOM THEROOM) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                if (THEROOM.getPOWER() != null ) {
+                    THEROOM.getPOWER().publishDps("{\"1\": true}", new IResultCallback() {
                         @Override
                         public void onError(String code, String error) {
-                            Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, "Turn on the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                         }
                         @Override
-                        public void onSuccess()
-                        {
-                            Toast.makeText(act, "turn Off 2 success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
-
+                        public void onSuccess() {
+                            THEROOM.getPOWER().publishDps("{\"2\": true}", new IResultCallback() {
+                                @Override
+                                public void onError(String code, String error) {
+                                    Toast.makeText(act, "Turn on the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                                @Override
+                                public void onSuccess() {
+                                    Toast.makeText(act, "Turn On Power success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                            });
                         }
                     });
+//                    THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
+//                        @Override
+//                        public void onError(String code, String error) {
+//                            Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+//                        }
+//                        @Override
+//                        public void onSuccess()
+//                        {
+//                            Toast.makeText(act, "turn Off 2 success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+//
+//                        }
+//                    });
                 }
 
             }
         });
     }
 
-    static void powerOnRoom(ROOM THEROOM) {
-
+    public static void powerByCard(ROOM THEROOM) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
-            public void run()
-            {
-                if (THEROOM.getPOWER() != null )
-                {
+            public void run() {
+                if (THEROOM.getPOWER() != null ) {
                     THEROOM.getPOWER().publishDps("{\"1\": true}", new IResultCallback() {
                         @Override
                         public void onError(String code, String error) {
-                            Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, "Turn on the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                         }
                         @Override
                         public void onSuccess() {
-                            Toast.makeText(act, "turn Off 1 success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
-                            //myRefPower.setValue(0);
+                            THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
+                                @Override
+                                public void onError(String code, String error) {
+                                    Toast.makeText(act, "Turn on the Power failure Room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                                @Override
+                                public void onSuccess() {
+                                    Toast.makeText(act, "Turn On Power success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
+                                }
+                            });
                         }
                     });
 //                    THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
@@ -4162,8 +4384,32 @@ public class Rooms extends AppCompatActivity
 
                             @Override
                             public void onSuccess() {
-                                //Toast.makeText(act, "turn on the light success", Toast.LENGTH_SHORT).show();
                                 Log.d("LightWithWelcome" , "countdoun");
+                                final long[] tt = {0};
+                                long xx = Integer.parseInt( finalDuration ) ;
+                                Handler H = new Handler();
+                                Runnable r = new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        tt[0] = tt[0] +1000 ;
+                                        H.postDelayed(this,1000);
+                                        Log.d("LightWithWelcome" , tt[0]+" "+(xx*1000));
+                                        if (tt[0] >= (xx*1000)){
+                                            THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
+                                                @Override
+                                                public void onError(String code, String error) {
+                                                    Log.d("LightWithWelcome" , error);
+                                                }
+
+                                                @Override
+                                                public void onSuccess() {
+                                                    Log.d("LightWithWelcome" , "Light is off ");
+                                                }
+                                            });
+                                            H.removeCallbacks(this);
+                                        }
+                                    }
+                                };
                             }
                         });
                     }
@@ -4191,10 +4437,8 @@ public class Rooms extends AppCompatActivity
                                     });
                                     H.removeCallbacks(this);
                                 }
-
                             }
                         } ;
-
                         THEROOM.getSWITCH1().publishDps("{\"1\": true}", new IResultCallback() {
                             @Override
                             public void onError(String code, String error) {
@@ -4228,30 +4472,32 @@ public class Rooms extends AppCompatActivity
         }
         Log.d("checkoutModeDuration" , Duration+" "+checkOutModeTime );
 
-        if (THEROOM.getPOWER_B() != null){
-            THEROOM.getPOWER().publishDps("{\"7\": "+Duration+"}", new IResultCallback() {
+        if (THEROOM.getPOWER_B() != null) {
+            THEROOM.getPOWER().publishDps("{\"1\": true}", new IResultCallback() {
                 @Override
                 public void onError(String code, String error) {
-                    //Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(act, "Checkout failed room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                 }
-
                 @Override
                 public void onSuccess() {
-                    //Toast.makeText(act, "turn on the light success", Toast.LENGTH_SHORT).show();
-                    Log.d("LightWithWelcome" , "countdoun");
                     THEROOM.getPOWER().publishDps("{\"2\": false}", new IResultCallback() {
                         @Override
                         public void onError(String code, String error) {
-                            //Toast.makeText(act, "turn on the light failure", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, "Checkout failed room "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                         }
 
                         @Override
                         public void onSuccess() {
-                            //Toast.makeText(act, "turn on the light success", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, "Checkout room success "+THEROOM.RoomNumber, Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
             });
+        }
+        for (ServiceEmps u : Emps) {
+            if (u.department.equals("Cleanup") || u.department.equals("Service")) {
+                makemessage(u.token, "Cleanup", true, THEROOM.RoomNumber);
+            }
         }
     }
 
@@ -4404,8 +4650,7 @@ public class Rooms extends AppCompatActivity
         }
     }
 
-    private void KeepScreenFull()
-    {
+    private void KeepScreenFull() {
         final Calendar x = Calendar.getInstance(Locale.getDefault());
         final Handler hander = new Handler();
         new Thread(new Runnable() {
@@ -4426,6 +4671,7 @@ public class Rooms extends AppCompatActivity
             }
         }).start();
     }
+
     private void hideSystemUI() {
         // Enables regular immersive mode.
         // For "lean back" mode, remove SYSTEM_UI_FLAG_IMMERSIVE.
@@ -4443,9 +4689,7 @@ public class Rooms extends AppCompatActivity
                         | View.SYSTEM_UI_FLAG_FULLSCREEN);
     }
 
-    static void sendNotification(final JSONObject notification )
-    {
-
+    static void sendNotification(final JSONObject notification ) {
         JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(FCM_MESSAGE_URL, notification,
                 new Response.Listener<JSONObject>() {
                     @Override
@@ -4472,8 +4716,7 @@ public class Rooms extends AppCompatActivity
 
     }
 
-    public static void makemessage(String t ,String Order , boolean addOrRemove , int RoomNumber)
-    {
+    public static void makemessage(String t ,String Order , boolean addOrRemove , int RoomNumber) {
 
         String NOTIFICATION_TITLE = Order ;
         String NOTIFICATION_MESSAGE = "" ;
@@ -4720,5 +4963,355 @@ public class Rooms extends AppCompatActivity
                 LogUtil.d("t.getMessage():" + t.getMessage());
             }
         });
+    }
+
+    void getScenes() {
+        TuyaHomeSdk.getSceneManagerInstance().getSceneList(Login.THEHOME.getHomeId(), new ITuyaResultCallback<List<SceneBean>>() {
+            @Override
+            public void onSuccess(List<SceneBean> result) {
+                SCENES = result ;
+                Log.d("scenesAre",SCENES.size()+"");
+                for (SceneBean s : SCENES) {
+                    Log.d("scenesAre",s.getName());
+//                    if (s.getName().contains("104")) {
+//                        TuyaHomeSdk.newSceneInstance(s.getId()).deleteScene(new
+//                          IResultCallback() {
+//                              @Override
+//                              public void onSuccess() {
+//                                  //Log.d(TAG, "Delete Scene Success");
+//                              }
+//
+//                              @Override
+//                              public void onError(String errorCode, String errorMessage) {
+//                              }
+//                          });
+//                    }
+                }
+                setSCENES(SCENES);
+            }
+
+            @Override
+            public void onError(String errorCode, String errorMessage) {
+                Log.d("scenesAre",errorCode+" "+errorMessage);
+            }
+        });
+
+    }
+
+    void setSCENES(List<SceneBean> SCENES) {
+        for (int i=0;i<list.size();i++) {
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchDNDScene2")) {
+                //Log.d("SCENE_DND1", "i am in");
+                PreCondition pr = new PreCondition();
+                List<PreCondition> lpr = new ArrayList<>();
+                lpr.add(pr);
+                BoolRule rule = BoolRule.newInstance("dp1", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "1", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("2", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchDNDScene2", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_DND1", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_DND1", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_DND1", errorMessage + " " + errorCode);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_DND1", errorMessage + " " + errorCode);
+                            }
+                        });
+            }
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchDNDScene3")) {
+                BoolRule rule = BoolRule.newInstance("dp1", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "1", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("3", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchDNDScene3", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_DND2", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_DND2", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_DND2", errorMessage);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_DND2", errorMessage);
+                            }
+                        });
+            }
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchDNDScene4")) {
+                BoolRule rule = BoolRule.newInstance("dp1", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "1", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("4", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchDNDScene4", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_DND2", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_DND2", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_DND2", errorMessage);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_DND2", errorMessage);
+                            }
+                        });
+            }
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchCleanupScene")) {
+                BoolRule rule = BoolRule.newInstance("dp2", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "2", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("1", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchCleanupScene", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_Cleanup", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_Cleanup", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_Cleanup", errorMessage);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_Cleanup", errorMessage);
+                            }
+                        });
+            }
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchLaundryScene")) {
+                BoolRule rule = BoolRule.newInstance("dp3", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "3", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("1", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchLaundryScene", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_Laundry", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_Laundry", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_Laundry", errorMessage);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_Laundry", errorMessage);
+                            }
+                        });
+            }
+            if (!searchScene(SCENES, list.get(i).RoomNumber + "ServiceSwitchCheckoutScene")) {
+                BoolRule rule = BoolRule.newInstance("dp4", true);
+                SceneCondition cond = SceneCondition.createDevCondition(list.get(i).getSERVICE_B(), "4", rule);
+                List<SceneCondition> conds = new ArrayList<>();
+                conds.add(cond);
+                HashMap<String, Object> taskMap = new HashMap<>();
+                taskMap.put("1", false); // Starts a device.
+                SceneTask task = TuyaHomeSdk.getSceneManagerInstance().createDpTask(
+                        list.get(i).getSERVICE_B().devId, // The device ID.
+                        taskMap     // The action of the device.
+                );
+                List<SceneTask> tasks = new ArrayList<>();
+                tasks.add(task);
+                TuyaHomeSdk.getSceneManagerInstance().createScene(
+                        Login.THEHOME.getHomeId(),
+                        list.get(i).RoomNumber + "ServiceSwitchCheckoutScene", // The name of the scene.
+                        false,
+                        IMAGES.get(0),  // Indicates whether the scene is displayed on the homepage.
+                        conds, // The effective period. This parameter is optional.
+                        tasks, // The conditions.
+                        null,     // The tasks.
+                        SceneBean.MATCH_TYPE_AND, // The type of trigger conditions to match.
+                        new ITuyaResultCallback<SceneBean>() {
+                            @Override
+                            public void onSuccess(SceneBean sceneBean) {
+                                Log.d("SCENE_Laundry", "createScene Success");
+                                TuyaHomeSdk.newSceneInstance(sceneBean.getId()).enableScene(sceneBean.getId(), new
+                                        IResultCallback() {
+                                            @Override
+                                            public void onSuccess() {
+                                                Log.d("SCENE_Laundry", "enable Scene Success");
+                                            }
+
+                                            @Override
+                                            public void onError(String errorCode, String errorMessage) {
+                                                Log.d("SCENE_Laundry", errorMessage);
+                                            }
+                                        });
+                            }
+
+                            @Override
+                            public void onError(String errorCode, String errorMessage) {
+                                Log.d("SCENE_Laundry", errorMessage);
+                            }
+                        });
+            }
+        }
+    }
+
+    void getSceneBGs() {
+        TuyaHomeSdk.getSceneManagerInstance().getSceneBgs(new ITuyaResultCallback<ArrayList<String>>() {
+            @Override
+            public void onSuccess(ArrayList<String> strings) {
+                Log.d("scenesAre","images get done");
+                IMAGES = strings ;
+                getScenes();
+            }
+
+            @Override
+            public void onError(String s, String s1) {
+
+            }
+        });
+    }
+
+    public static boolean searchScene (List<SceneBean> list , String name) {
+        boolean res = false ;
+        for (int i=0 ; i<list.size();i++) {
+            if (list.get(i).getName().equals(name)) {
+                res = true ;
+                break;
+            }
+        }
+        return res ;
+    }
+
+    public void goToLocks(View view) {
+        Intent i = new Intent(act,Locks.class);
+        startActivity(i);
     }
 }

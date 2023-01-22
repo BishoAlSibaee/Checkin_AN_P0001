@@ -26,6 +26,7 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
+import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
@@ -209,8 +210,11 @@ public class messagingService extends FirebaseMessagingService {
         // If you want to send messages to this application instance or
         // manage this apps subscriptions on the server side, send the
         // Instance ID token to your app server.
-        sendRegistrationToServer(token);
-        MainActivity.MyFireUser.child("token").setValue(token);
+        if (LogIn.db.isLogedIn()) {
+            sendRegistrationToServer(token);
+            FirebaseDatabase database = FirebaseDatabase.getInstance("https://hotelservices-ebe66.firebaseio.com/");
+            MainActivity.MyFireUser.child("token").setValue(token);
+        }
     }
 
     void sendRegistrationToServer(final String token)

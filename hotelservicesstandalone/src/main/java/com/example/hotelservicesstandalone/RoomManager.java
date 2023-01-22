@@ -3,10 +3,14 @@ package com.example.hotelservicesstandalone;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -22,6 +26,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -86,14 +91,19 @@ public class RoomManager extends AppCompatActivity
     private ITuyaDevice FOUNDD ;
     private ITuyaGateway FOUNDG ;
     private int ID ;
+    ConnectivityManager cm ;
+    String ConnectedNetworkType ;
+    WifiInfo info ;
     protected static final int REQUEST_PERMISSION_REQ_CODE = 11;
     private ExtendedBluetoothDevice FOUNDLOCK ;
+    ITuyaActivator mTuyaActivatorAP ;
     ITuyaActivator mTuyaActivator ;
     ITuyaActivator mTuyaGWActivator ;
     ITuyaGwSearcher mTuyaGwSearcher ;
     ITuyaActivator mITuyaActivator ;
     RequestQueue REQ ;
 
+    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
@@ -103,6 +113,33 @@ public class RoomManager extends AppCompatActivity
         REQ = Volley.newRequestQueue(act);
         setActivity();
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
+        wifiManager = (WifiManager) act.getApplicationContext().getSystemService(WIFI_SERVICE) ;
+        cm = (ConnectivityManager) act.getSystemService(Context.CONNECTIVITY_SERVICE);
+        cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(@NonNull Network network) {
+                super.onAvailable(network);
+                getTheNetworkInfo ();
+            }
+
+            @Override
+            public void onUnavailable() {
+                super.onUnavailable();
+
+            }
+
+            @Override
+            public void onLosing(@NonNull Network network, int maxMsToLive) {
+                super.onLosing(network, maxMsToLive);
+
+            }
+
+            @Override
+            public void onLost(@NonNull Network network) {
+                super.onLost(network);
+
+            }
+        } );
     }
 
     @Override
@@ -600,14 +637,14 @@ public class RoomManager extends AppCompatActivity
                 return false;
             }
         });
-        selectedWifi = (TextView)findViewById(R.id.selected_wifi);
-        foundWifiDevice = (TextView)findViewById(R.id.theFoundDevice);
-        foundZbeeDevice = (TextView) findViewById(R.id.theFoundDeviceZbee);
-        foundwireZbGateway = (TextView) findViewById(R.id.wire_zbgate_found);
-        wirezbGatewayNewName = (TextView) findViewById(R.id.wire_zbgateway_newstaticName);
-        foundLock = (TextView) findViewById(R.id.foundlock);
-        foundLockNewName = (TextView) findViewById(R.id.foundLockNewName);
-        ac = (TextView)findViewById(R.id.room_AC);
+        selectedWifi = findViewById(R.id.selected_wifi);
+        foundWifiDevice = findViewById(R.id.theFoundDevice);
+        foundZbeeDevice = findViewById(R.id.theFoundDeviceZbee);
+        foundwireZbGateway = findViewById(R.id.wire_zbgate_found);
+        wirezbGatewayNewName = findViewById(R.id.wire_zbgateway_newstaticName);
+        foundLock = findViewById(R.id.foundlock);
+        foundLockNewName = findViewById(R.id.foundLockNewName);
+        ac = findViewById(R.id.room_AC);
         ac.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v)
@@ -650,9 +687,9 @@ public class RoomManager extends AppCompatActivity
                 return false;
             }
         });
-        ac2 = (TextView)findViewById(R.id.room_AC2);
-        wifiPass = (EditText) findViewById(R.id.wifi_pass);
-        getWifi = (Button) findViewById(R.id.room_addWifi);
+        ac2 = findViewById(R.id.room_AC2);
+        wifiPass = findViewById(R.id.wifi_pass);
+        getWifi = findViewById(R.id.room_addWifi);
         getWifi.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v)
@@ -725,7 +762,7 @@ public class RoomManager extends AppCompatActivity
         ArrayAdapter y =  new ArrayAdapter<String>(act ,R.layout.spinners_item ,Types);
         DeviceTypesZ.setAdapter(y);
         DeviceTypes.setAdapter(x);
-        caption.setText("Manage Room : "+String.valueOf(Room.RoomNumber));
+        caption.setText("Manage Room : "+ Room.RoomNumber);
         if (Room.lock == 0 )
         {
             lock.setText("NO");
@@ -860,10 +897,8 @@ public class RoomManager extends AppCompatActivity
         }
     }
 
-    public void searchWifiDevice(View view)
-    {
+    public void searchWifiDevice(View view) {
         lodingDialog d = new lodingDialog(act);
-
         TuyaHomeSdk.getActivatorInstance().getActivatorToken(Login.THEHOME.getHomeId(),
                 new ITuyaActivatorGetToken() {
                     @Override
@@ -928,8 +963,63 @@ public class RoomManager extends AppCompatActivity
 
     }
 
-    public void renameDevice(View view)
-    {
+    public void searchApMode(View view) {
+
+        lodingDialog d = new lodingDialog(act);
+        TuyaHomeSdk.getActivatorInstance().getActivatorToken(Login.THEHOME.getHomeId(),
+                new ITuyaActivatorGetToken() {
+                    @Override
+                    public void onSuccess(String token) {
+                        Log.d("apSearchMode" , "tokrn is: "+token );
+                        ActivatorBuilder builder = new ActivatorBuilder()
+                                .setContext(act)
+                                .setSsid(selectedWifi.getText().toString())
+                                .setPassword(wifiPass.getText().toString())
+                                .setActivatorModel(ActivatorModelEnum.TY_AP)
+                                .setTimeOut(100)
+                                .setToken(token)
+                                .setListener(new ITuyaSmartActivatorListener() {
+
+                                                 @Override
+                                                 public void onError(String errorCode, String errorMsg) {
+                                                     d.stop();
+                                                     mTuyaActivatorAP.stop();
+                                                     Log.d("apSearchMode" , "error "+errorMsg +" "+errorCode);
+                                                     Toast.makeText(act, errorMsg+" "+errorCode , Toast.LENGTH_LONG).show();
+                                                 }
+
+                                                 @Override
+                                                 public void onActiveSuccess(DeviceBean devResp) {
+                                                     d.stop();
+                                                     mTuyaActivatorAP.stop();
+                                                     Log.d("apSearchMode" , "device is: "+devResp.name);
+                                                     Rooms.CHANGE_STATUS = true ;
+                                                     foundWifiDevice.setText(devResp.getName());
+                                                     FOUND = devResp ;
+                                                     FOUNDD = TuyaHomeSdk.newDeviceInstance(FOUND.getDevId());
+                                                 }
+
+                                                 @Override
+                                                 public void onStep(String step, Object data) {
+                                                     d.stop();
+                                                     mTuyaActivatorAP.stop();
+                                                     Log.d("apSearchMode" , "step is: "+step);
+                                                 }
+                                             }
+                                );
+                        mTuyaActivatorAP = TuyaHomeSdk.getActivatorInstance().newActivator(builder);
+                        mTuyaActivatorAP.start();
+                    }
+
+                    @Override
+                    public void onFailure(String s, String s1) {
+
+                    }
+                });
+
+    }
+
+    public void renameDevice(View view) {
         if (DeviceTypes.getSelectedItem().toString() != null )
         {
             lodingDialog d = new lodingDialog(act);
@@ -962,8 +1052,7 @@ public class RoomManager extends AppCompatActivity
         }
     }
 
-    public void saveDevice(View view)
-    {
+    public void saveDevice(View view) {
         if (NewName == null)
         {
             Toast.makeText(act,"Rename Device First " , Toast.LENGTH_LONG).show();
@@ -2253,4 +2342,48 @@ public class RoomManager extends AppCompatActivity
             }
         });
     }
+
+    void getTheNetworkInfo () {
+        if (cm != null ) {
+            if (cm.getActiveNetworkInfo() != null ) {
+                if (cm.getActiveNetworkInfo().isConnected()) {
+                    ConnectedNetworkType = cm.getActiveNetworkInfo().getTypeName() ;
+                    if (ConnectedNetworkType != null) {
+                        if (ConnectedNetworkType.equals("WIFI") || ConnectedNetworkType.equals("wifi") || ConnectedNetworkType.equals("Wifi")) {
+                            if (wifiManager.getConnectionInfo() != null) {
+                                info = wifiManager.getConnectionInfo();
+                                if (info != null ) {
+                                    Log.d("wifiName",info.getSSID());
+                                    selectedWifi.setText(info.getSSID());
+                                }
+                                else {
+                                    //MessageDialog m = new MessageDialog(act,"Wifi Name ?","Couldn't Get The Wifi Name ");
+                                }
+                            }
+                            else {
+                                //MessageDialog m = new MessageDialog(act,"Wifi Name ?","Couldn't Get The Wifi Name ");
+                            }
+                        }
+                        else {
+                            //MessageDialog m = new MessageDialog(act,"No Wifi Connection","Your Device Must Be Connected To WIFI Network");
+                        }
+                    }
+                    else {
+                        //MessageDialog m = new MessageDialog(act,"No Network Type","Couldn't get The Network Type");
+                    }
+                }
+                else  {
+                    //MessageDialog m = new MessageDialog(act,"UnConnected","This Device Is Not Connected To any network");
+                }
+            }
+            else {
+                //MessageDialog m = new MessageDialog(act,"No Network","Couldn't get network data");
+            }
+        }
+        else {
+            //MessageDialog m = new MessageDialog(act,"No Connection","This Android Device Has No Network Connection Feature");
+        }
+    }
+
+
 }

@@ -65,7 +65,7 @@ public class Login extends AppCompatActivity
         ProjectName = (TextView) findViewById(R.id.Project_Name);
         ProjectName.setText(SelectedHotel.ProjectName);
         THEHOTELDB = new HotelDB(act);
-        THEHOTELDB.Logout();
+        //THEHOTELDB.Logout();
         if (Login.THEHOTELDB.isLoggedIn())
         {
             Log.d("loginorocess" , "logged");
@@ -112,8 +112,6 @@ public class Login extends AppCompatActivity
                                 HotelsList = new ArrayList<HOTEL>();
                             }
                         });
-
-
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }

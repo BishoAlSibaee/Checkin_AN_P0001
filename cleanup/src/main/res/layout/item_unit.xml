@@ -4,11 +4,12 @@
     android:layout_height="wrap_content"
     android:background="@color/colorPrimaryDark"
     android:orientation="vertical"
-    android:padding="7dp">
+    android:padding="10dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_weight="1"
         android:background="@color/colorPrimaryDark"
         android:orientation="horizontal">
 
@@ -16,126 +17,119 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:background="@color/colorPrimaryDark"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:padding="5dp">
 
-            <LinearLayout
+            <TextView
+                android:id="@+id/textView"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_weight="0.5"
-                android:orientation="vertical"
-                android:padding="5dp">
-
-                <TextView
-                    android:id="@+id/textView"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="MEAL"
-                    android:textAlignment="center"
-                    android:textColor="@color/colorAccent"
-                    android:textSize="18sp"
-                    android:textStyle="normal" />
-
-                <TextView
-                    android:id="@+id/restaurantOrderItem_name"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:textAlignment="center"
-                    android:textColor="@android:color/background_light"
-                    android:textSize="18sp"
-                    android:textStyle="normal" />
-
-                <TextView
-                    android:id="@+id/textView3"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="QUANTITY"
-                    android:textAlignment="center"
-                    android:textColor="@color/colorAccent"
-                    android:textSize="14sp"
-                    android:textStyle="normal" />
-
-                <TextView
-                    android:id="@+id/restaurantOrderItem_quantity"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:textAlignment="center"
-                    android:textColor="@android:color/background_light"
-                    android:textSize="18sp"
-                    android:textStyle="normal" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:padding="5dp">
+                android:gravity="center"
+                android:text="MEAL"
+                android:textAlignment="center"
+                android:textColor="@color/colorAccent"
+                android:textSize="18sp"
+                android:textStyle="normal" />
 
-                <TextView
-                    android:id="@+id/textView4"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="PRICE"
-                    android:textAlignment="center"
-                    android:textColor="@color/colorAccent"
-                    android:textSize="12sp"
-                    android:textStyle="normal"
-                    android:layout_gravity="center" />
+            <TextView
+                android:id="@+id/restaurantOrderItem_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:inputType="textMultiLine"
+                android:textAlignment="center"
+                android:textColor="@android:color/background_light"
+                android:textSize="18sp"
+                android:textStyle="normal" />
 
-                <TextView
-                    android:id="@+id/restaurantOrderItem_price"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:textAlignment="center"
-                    android:textColor="@android:color/background_light"
-                    android:textSize="12sp"
-                    android:textStyle="normal" />
+            <TextView
+                android:id="@+id/textView3"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="QUANTITY"
+                android:textAlignment="center"
+                android:textColor="@color/colorAccent"
+                android:textSize="14sp"
+                android:textStyle="normal" />
 
-                <TextView
-                    android:id="@+id/textView5"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:text="TOTAL"
-                    android:textAlignment="center"
-                    android:textColor="?attr/colorAccent"
-                    android:textSize="12sp"
-                    android:textStyle="normal" />
+            <TextView
+                android:id="@+id/restaurantOrderItem_quantity"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textAlignment="center"
+                android:textColor="@android:color/background_light"
+                android:textSize="18sp"
+                android:textStyle="normal" />
 
-                <TextView
-                    android:id="@+id/restaurantOrderItem_total"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:textAlignment="center"
-                    android:textColor="@android:color/background_light"
-                    android:textSize="12sp"
-                    android:textStyle="normal" />
-            </LinearLayout>
         </LinearLayout>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:padding="5dp">
+
+            <TextView
+                android:id="@+id/textView4"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="PRICE"
+                android:textAlignment="center"
+                android:textColor="@color/colorAccent"
+                android:textSize="18sp"
+                android:textStyle="normal" />
+
+            <TextView
+                android:id="@+id/restaurantOrderItem_price"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textAlignment="center"
+                android:textColor="@android:color/background_light"
+                android:textSize="18sp"
+                android:textStyle="normal" />
+
+            <TextView
+                android:id="@+id/textView5"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="TOTAL"
+                android:textAlignment="center"
+                android:textColor="?attr/colorAccent"
+                android:textSize="14sp"
+                android:textStyle="normal" />
+
+            <TextView
+                android:id="@+id/restaurantOrderItem_total"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:textAlignment="center"
+                android:textColor="@android:color/background_light"
+                android:textSize="18sp"
+                android:textStyle="normal" />
+        </LinearLayout>
     </LinearLayout>
+
 </LinearLayout>

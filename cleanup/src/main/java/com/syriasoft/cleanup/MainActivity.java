@@ -1,14 +1,18 @@
 package com.syriasoft.cleanup;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Color;
 import android.media.RingtoneManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -28,6 +32,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -35,8 +40,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.volley.AuthFailureError;
+import com.android.volley.BuildConfig;
 import com.android.volley.Request;
-import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
@@ -73,6 +78,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -125,6 +131,9 @@ public class MainActivity extends AppCompatActivity {
     static DNDDB dndDB ;
     static public DatabaseReference MyFireUser ;
     public static List<String> CurrentRoomsStatus ;
+    ConnectivityManager connectivityManager ;
+    static boolean isConnected = false ;
+
 
 //--------------------------------------------------------
     //Activity Methods
@@ -152,17 +161,6 @@ public class MainActivity extends AppCompatActivity {
     public void onResume()
     {
         super.onResume();
-        //final GridLayoutManager manager = new GridLayoutManager(this,4);
-        //manager.setOrientation(LinearLayoutManager.VERTICAL);
-        //dnds = (RecyclerView) findViewById(R.id.dnd_recycler);
-        //dnds.setLayoutManager(manager);
-        //ada = new DND_Adapter(dndList);
-        //dnds.setAdapter(ada);
-
-        if (FireRooms.size()>0)
-        {
-           // setRoomsListeners();
-        }
     }
 
 
@@ -170,13 +168,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy()
     {
         super.onDestroy();
-        //FirebaseMessaging.getInstance().unsubscribeFromTopic(LogIn.db.getUser().department);
     }
 
 
 //------------------------------------------------------------------------
     //On Creat Method
 
+    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
@@ -184,13 +182,37 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         act = this ;
         LogIn.actList.add(act);
-        if (LogIn.actList.size()>2)
-        {
+        if (LogIn.actList.size()>2) {
             for (int i = 1 ; i<(LogIn.actList.size()-1);i++)
             {
                 LogIn.actList.get(i).finish();
             }
         }
+        connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        isConnected = connectivityManager.getActiveNetworkInfo().isConnected();
+        connectivityManager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback(){
+            @Override
+            public void onAvailable(Network network) {
+                super.onAvailable(network);
+                isConnected = true ;
+            }
+
+            @Override
+            public void onLosing(Network network, int maxMsToLive) {
+                super.onLosing(network, maxMsToLive);
+            }
+
+            @Override
+            public void onLost(Network network) {
+                super.onLost(network);
+                isConnected = false ;
+            }
+
+            @Override
+            public void onUnavailable() {
+                super.onUnavailable();
+            }
+        });
         orderDB = new OrdersDB(act);
         dndDB = new DNDDB(act);
         DEP = LogIn.db.getUser().department ;
@@ -204,47 +226,38 @@ public class MainActivity extends AppCompatActivity {
         MyFireUser.setValue(MYUSER);
         getRooms();
         db = new UserDB(act);
-        if (!db.isLogedIn())
-        {
-            db.insertUser(LogIn.db.getUser().id, LogIn.db.getUser().name, LogIn.db.getUser().Mobile, LogIn.db.getUser().token, LogIn.db.getUser().department, LogIn.db.getUser().jobNumber,0);
+        if (!db.isLogedIn()) {
+            db.insertUser(LogIn.db.getUser().id, LogIn.db.getUser().name, LogIn.db.getUser().Mobile, LogIn.db.getUser().token, LogIn.db.getUser().department, LogIn.db.getUser().jobNumber,0, BuildConfig.VERSION_CODE);
         }
-        g = (ListView) findViewById(R.id.cleanUpGrid);
-        FirebaseInstanceId.getInstance().getInstanceId()
-                .addOnCompleteListener(new OnCompleteListener<InstanceIdResult>()
-                {
+        g = findViewById(R.id.cleanUpGrid);
+        FirebaseInstanceId.getInstance().getInstanceId().addOnCompleteListener(new OnCompleteListener<InstanceIdResult>() {
                     @Override
                     public void onComplete(@NonNull Task<InstanceIdResult> task)
                     {
-                        if (!task.isSuccessful())
-                        {
-
-                            return;
+                        if (task.getResult() != null) {
+                            String token = task.getResult().getToken();
+                            MyFireUser.child("token").setValue(token);
+                            sendRegistrationToServer(token);
                         }
-                        String token = task.getResult().getToken();
-                        //Toast.makeText(act,token , Toast.LENGTH_LONG).show();
-                        sendRegistrationToServer(token);
                     }
                 });
-        //setFcmSebscription();
-        TextView mainText = (TextView) findViewById(R.id.mainText) ;
+        TextView mainText = findViewById(R.id.mainText) ;
         mainText.setText(LogIn.db.getUser().department + " Orders");
-         p = (ProgressBar) findViewById(R.id.progressBar2);
+         p = findViewById(R.id.progressBar2);
         Toast.makeText(act,LogIn.db.getUser().department , Toast.LENGTH_LONG).show();
         final GridLayoutManager manager = new GridLayoutManager(this,4);
         manager.setOrientation(LinearLayoutManager.VERTICAL);
-        dnds = (RecyclerView) findViewById(R.id.dnd_recycler);
+        dnds = findViewById(R.id.dnd_recycler);
         dnds.setLayoutManager(manager);
         ada = new DND_Adapter(dndDB.getOrders());
         dnds.setAdapter(ada);
         orderDB.removeAll();
         adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
         g.setAdapter(adapter);
+
         auth();
         setTuyaApplication();
         goLogIn();
-        //getActionBar().setIcon(R.drawable.service_logo);
-        //getActionBar().setTitle(LogIn.db.getUser().name);
-
     }
 
     @Override
@@ -257,8 +270,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item)
-    {
+    public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId())
         {
 
@@ -275,152 +287,6 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
         return super.onOptionsItemSelected(item);
-    }
-
-//-------------------------------------------------------------------------
-    //Set Activity
-
-    private void setFcmSebscription()
-    {
-
-        if (db.isLogedIn())
-        {
-            if (LogIn.db.getUser().department.equals("Service")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("Service");
-                FirebaseMessaging.getInstance().subscribeToTopic("ALL");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Restaurant");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Laundry");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Cleanup");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("RoomService");
-                ordersUrl = LogIn.URL+"getServiceOrders.php";
-            }
-            if (LogIn.db.getUser().department.equals("Laundry")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("Laundry");
-                //ordersUrl = "https://bait-elmoneh.online/hotel-service/getLaundryOrders.php";
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Restaurant");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Service");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Cleanup");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("RoomService");
-            }
-            if (LogIn.db.getUser().department.equals("Cleanup")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("Cleanup");
-                FirebaseMessaging.getInstance().subscribeToTopic("ALL");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Restaurant");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Service");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Laundry");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("RoomService");
-                //ordersUrl = "https://bait-elmoneh.online/hotel-service/getCleanupOrders.php";
-            }
-            if (LogIn.db.getUser().department.equals("Restaurant")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("Restaurant");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Cleanup");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Service");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Laundry");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("RoomService");
-            }
-            if (LogIn.db.getUser().department.equals("RoomService")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("RoomService");
-                FirebaseMessaging.getInstance().subscribeToTopic("ALL");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Cleanup");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Service");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Laundry");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Restaurant");
-            }
-            if (LogIn.db.getUser().department.equals("Gym")) {
-                FirebaseMessaging.getInstance().subscribeToTopic("Gym");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Cleanup");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Service");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Laundry");
-                FirebaseMessaging.getInstance().unsubscribeFromTopic("Restaurant");
-            }
-        }
-        else
-        {
-            Toast.makeText(act , "fdsbgkdl",Toast.LENGTH_LONG).show();
-        }
-    }
-
-    static void getOrders()
-    {
-        new Handler(Looper.getMainLooper()).post(new Runnable() {
-            @Override
-            public void run()
-            {
-                p.setVisibility(View.VISIBLE);
-            }
-        });
-
-        //Toast.makeText(act,LogIn.db.getUser().department ,Toast.LENGTH_LONG).show();
-       // final LoadingDialog d = new LoadingDialog(act);
-        list.clear();
-        StringRequest req = new StringRequest(Request.Method.POST, ordersUrl, new Response.Listener<String>() {
-            @Override
-            public void onResponse(String response)
-            {
-                //Toast.makeText(act ,response,Toast.LENGTH_LONG).show();
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run()
-                    {
-                        p.setVisibility(View.GONE);
-                    }
-                });
-
-                if (response.equals("0"))
-                {
-                    Toast.makeText(act,"No Orders" ,Toast.LENGTH_LONG).show();
-                }
-                else
-                {
-                    try {
-                        list.clear();
-                        JSONArray arr = new JSONArray(response);
-                        for ( int i=0 ; i < arr.length() ; i++ )
-                        {
-                            JSONObject order = arr.getJSONObject(i);
-                            String roomNumber = order.getString("roomNumber");
-                            String id = order.getString("id");
-                            String dep = order.getString("dep");
-                            long date = order.getLong("dateTime");
-                            String RoomServiceOrder = order.getString("orderText");
-
-                            cleanOrder o = new cleanOrder( roomNumber , id , dep ,RoomServiceOrder, date );
-                            list.add(o);
-                        }
-                    } catch (JSONException e) {
-                        e.printStackTrace();
-                        //Toast.makeText(act,e.getMessage() ,Toast.LENGTH_LONG).show();
-                    }
-                    adapter = new CleanUp_Adapter(list , act);
-                    g.setAdapter(adapter);
-                    //alertActivity();
-                }
-
-            }
-        }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error)
-            {
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run()
-                    {
-                        p.setVisibility(View.GONE);
-                    }
-                });
-                Toast.makeText(act,error.getMessage() ,Toast.LENGTH_LONG).show();
-            }
-        })
-        {
-            @Override
-            protected Map<String, String> getParams() throws AuthFailureError
-            {
-                Map<String,String> params = new HashMap<String,String>();
-                params.put( "dep" , LogIn.db.getUser().department );
-                return params;
-            }
-        };
-        Volley.newRequestQueue(act).add(req);
     }
 
 //-------------------------------------------------------------------------
@@ -496,67 +362,6 @@ public class MainActivity extends AppCompatActivity {
         Volley.newRequestQueue(act).add(re);
     }
 
-//-------------------------------------------------------------------------
-    //Send Cloud Message
-
-    public void makemessage(String t , String service ,int room , String dep)
-    {
-
-        String TOPIC = t;
-        String NOTIFICATION_TITLE = "labor";
-        String NOTIFICATION_MESSAGE = "New Order From";
-
-        JSONObject notification = new JSONObject();
-        JSONObject notifcationBody = new JSONObject();
-        try {
-            notifcationBody.put("title", NOTIFICATION_TITLE);
-            notifcationBody.put("message", NOTIFICATION_MESSAGE);
-            notifcationBody.put("service", service);
-            notifcationBody.put("room", room);
-            notifcationBody.put("orderAction", false);
-            notifcationBody.put("dep", dep);
-            notifcationBody.put("emp", LogIn.db.getUser().name);
-            notification.put("to", TOPIC);
-            notification.put("data", notifcationBody);
-        } catch (JSONException e) {
-            //Log.e(TAG, "onCreate: " + e.getMessage() );
-        }
-        sendNotification(notification);
-    }
-    void sendNotification(JSONObject notification)
-    {
-        JsonObjectRequest jsonObjectRequest = new JsonObjectRequest(FCM_MESSAGE_URL, notification,
-                new Response.Listener<JSONObject>() {
-                    @Override
-                    public void onResponse(JSONObject response) {
-                        //Log.i(TAG, "onResponse: " + response.toString());
-                        Toast.makeText(act ,"تم تنفيذ طلبك", Toast.LENGTH_LONG ).show();
-                        //messageDialog d = new messageDialog("تم ارسال طلبك","تاكيد"  ,act);
-                    }
-                },
-                new Response.ErrorListener() {
-                    @Override
-                    public void onErrorResponse(VolleyError error) {
-                        //Toast.makeText(act, "Request error", Toast.LENGTH_LONG).show();
-                        //Log.i(TAG, "onErrorResponse: Didn't work");
-                    }
-                }){
-            @Override
-            public Map<String, String> getHeaders() throws AuthFailureError {
-                Map<String, String> params = new HashMap<>();
-                params.put("Authorization", serverKey);
-                params.put("Content-Type", contentType);
-                return params;
-            }
-        };
-        Volley.newRequestQueue(act).add(jsonObjectRequest);
-
-    }
-
-//-------------------------------------------------------------------------
-    //Add And Remove Order
-
-
 //------------------------------------------------------------------------
     //Send Token To Server
     void sendRegistrationToServer(final String token)
@@ -599,8 +404,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    public void sgnOut(View view)
-    {
+    public void sgnOut(View view) {
 
         for (int i=0;i<FireRooms.size();i++)
         {
@@ -655,8 +459,7 @@ public class MainActivity extends AppCompatActivity {
         startActivity(i);
     }
 
-    public static  void alertActivity()
-    {
+    public static  void alertActivity() {
         for (int i =0;i<list.size();i++)
         {
             if (list.get(i).dep.equals("SOS"))
@@ -675,20 +478,15 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private void getRooms()
-    {
-
+    private void getRooms() {
         final LoadingDialog loading = new LoadingDialog(act);
         StringRequest re = new StringRequest(Request.Method.POST, getRoomsUrl, new Response.Listener<String>()
         {
             @Override
-            public void onResponse(String response)
-            {
-                Log.d("rooms" , response);
+            public void onResponse(String response) {
                 loading.close();
                 try
                 {
-
                     JSONArray arr = new JSONArray(response);
                     list.clear();
                     FireRooms.clear();
@@ -754,10 +552,7 @@ public class MainActivity extends AppCompatActivity {
                 DNDListiner = new ValueEventListener[Rooms.size()];
                 SOSListiner = new ValueEventListener[Rooms.size()];
                 MiniBarCheck = new ValueEventListener[Rooms.size()];
-                //Intent NotificationsService = new Intent(act,ReceivingService.class);
-                //startService(NotificationsService);
                 setRoomsListeners();
-                //Toast.makeText(act,""+FireRooms.size(),Toast.LENGTH_SHORT).show();
             }
         }, new Response.ErrorListener()
         {
@@ -765,6 +560,23 @@ public class MainActivity extends AppCompatActivity {
             public void onErrorResponse(VolleyError error)
             {
                 loading.close();
+                AlertDialog.Builder b = new AlertDialog.Builder(act);
+                b.setTitle("Getting data failed")
+                        .setMessage("failed to get data .. try again ?? ")
+                        .setNegativeButton("cancel", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                                act.finish();
+                            }
+                        })
+                        .setPositiveButton("yes", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                                getRooms();
+                            }
+                        }).create().show();
             }
         })
         {
@@ -785,16 +597,12 @@ public class MainActivity extends AppCompatActivity {
         {
             final int finalI = i;
 
-            if (DEP.equals("Cleanup"))
-            {
-                CleanupListiner[i] = FireRooms.get(i).child("Cleanup").addValueEventListener(new ValueEventListener()
-                {
+            if (DEP.equals("Cleanup")) {
+                CleanupListiner[i] = FireRooms.get(i).child("Cleanup").addValueEventListener(new ValueEventListener() {
                     @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
 
-                        if (Long.parseLong(dataSnapshot.getValue().toString()) !=0  )
-                        {
+                        if (Long.parseLong(dataSnapshot.getValue().toString()) !=0  ) {
                             boolean status = false ;
 
                             status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"Cleanup");
@@ -807,10 +615,8 @@ public class MainActivity extends AppCompatActivity {
 //                            }
                             if (!status)
                             {
-                                //Calendar x = Calendar.getInstance(Locale.getDefault());
                                 long timee = Long.parseLong(dataSnapshot.getValue().toString());
                                 orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"Cleanup","",timee);
-                                //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Cleanup","",timee));
                                 adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
                                 g.setAdapter(adapter);
                             }
@@ -839,18 +645,18 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot)
                     {
-                        Log.d("DNDChanged" , "_____________________") ;
-                        Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list befor "+dndDB.getOrders().size()) ;
+                        //Log.d("DNDChanged" , "_____________________") ;
+                        //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list befor "+dndDB.getOrders().size()) ;
                         if (Long.parseLong(dataSnapshot.getValue().toString()) > 0 )
                         {
                             boolean status = false ;
                             status = dndDB.searchOrder(Rooms.get(finalI).RoomNumber,"DND");
-                            Log.d("DNDChanged" , status+"") ;
+                            //Log.d("DNDChanged" , status+"") ;
                             if (!status) {
 
                                 long time = Long.parseLong(dataSnapshot.getValue().toString());
                                 dndDB.insertOrder(Rooms.get(finalI).RoomNumber,"DND","",time);
-                                Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
+                                //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
                             }
                             ada = new DND_Adapter(dndDB.getOrders());
                             dnds.setAdapter(ada);
@@ -864,7 +670,7 @@ public class MainActivity extends AppCompatActivity {
                                     dndDB.removeRow( Long.parseLong(dndDB.getOrders().get(x).orderNumber));
                                 }
                             }
-                            Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
+                            //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
                             ada = new DND_Adapter(dndDB.getOrders());
                             dnds.setAdapter(ada);
                         }
@@ -943,11 +749,10 @@ public class MainActivity extends AppCompatActivity {
                             status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"Laundry");
                             if (!status)
                             {
-                                //Calendar x = Calendar.getInstance(Locale.getDefault());
                                 long timee =  Long.parseLong(dataSnapshot.getValue().toString());
-                                //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
                                 orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"Laundry","",timee);
-                                adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                List<cleanOrder> list = orderDB.getOrders() ;
+                                adapter = new CleanUp_Adapter(list,act);
                                 g.setAdapter(adapter);
 //                                adapter.notifyDataSetChanged();
 //                                int reqCode = r.nextInt();
@@ -967,7 +772,8 @@ public class MainActivity extends AppCompatActivity {
                                 if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("Laundry") )
                                 {
                                     orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -985,18 +791,18 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot)
                     {
-                        Log.d("DNDChanged" , "_____________________") ;
-                        Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list befor "+dndDB.getOrders().size()) ;
+                        //Log.d("DNDChanged" , "_____________________") ;
+                        //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list befor "+dndDB.getOrders().size()) ;
                         if (Long.parseLong(dataSnapshot.getValue().toString()) > 0 )
                         {
                             boolean status = false ;
                             status = dndDB.searchOrder(Rooms.get(finalI).RoomNumber,"DND");
-                            Log.d("DNDChanged" , status+"") ;
+                            //Log.d("DNDChanged" , status+"") ;
                             if (!status) {
 
                                 long time = Long.parseLong(dataSnapshot.getValue().toString());
                                 dndDB.insertOrder(Rooms.get(finalI).RoomNumber,"DND","",time);
-                                Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
+                                //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
                             }
                             ada = new DND_Adapter(dndDB.getOrders());
                             dnds.setAdapter(ada);
@@ -1010,7 +816,7 @@ public class MainActivity extends AppCompatActivity {
                                     dndDB.removeRow( Long.parseLong(dndDB.getOrders().get(x).orderNumber));
                                 }
                             }
-                            Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
+                            //Log.d("DNDChanged" , Rooms.get(finalI).RoomNumber+" i am changed to " + dataSnapshot.getValue().toString()+" in list after "+dndDB.getOrders().size()) ;
                             ada = new DND_Adapter(dndDB.getOrders());
                             dnds.setAdapter(ada);
                         }
@@ -1029,7 +835,6 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot1)
                     {
-                        //Log.d("roomserviceProblem" , FireRooms.size()+" " + Rooms.size());
                         if (Long.parseLong(dataSnapshot1.getValue().toString()) != 0 )
                         {
                             boolean status = false ;
@@ -1043,10 +848,9 @@ public class MainActivity extends AppCompatActivity {
 //
 //                                }
 //                            }
-                            Log.d("roomserviceProblem" , status+"");
+                            //Log.d("roomserviceProblem" , status+"");
                             if (!status)
                             {
-
                                 FireRooms.get(finalI).child("RoomServiceText").addListenerForSingleValueEvent(new ValueEventListener() {
                                     @Override
                                     public void onDataChange(@NonNull DataSnapshot dataSnapshot2)
@@ -1058,14 +862,16 @@ public class MainActivity extends AppCompatActivity {
 //                                            adapter.notifyDataSetChanged();
 //                                            Log.d("roomserviceProblem" , "inserted");
                                             orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService",dataSnapshot2.getValue().toString(),time);
-                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                            List<cleanOrder> list = orderDB.getOrders() ;
+                                            adapter = new CleanUp_Adapter(list,act);
                                             g.setAdapter(adapter);
                                         }
                                         else {
 //                                            list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", "", time));
 //                                            adapter.notifyDataSetChanged();
                                             orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService","",time);
-                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                            List<cleanOrder> list = orderDB.getOrders() ;
+                                            adapter = new CleanUp_Adapter(list,act);
                                             g.setAdapter(adapter);
                                         }
 
@@ -1076,9 +882,6 @@ public class MainActivity extends AppCompatActivity {
 
                                     }
                                 });
-
-                                //int reqCode = r.nextInt();
-                                //showNotification(act,"RoomService Order "+Rooms.get(finalI).RoomNumber , "new room service order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
                             }
                         }
                         else
@@ -1093,7 +896,8 @@ public class MainActivity extends AppCompatActivity {
                                 if (Integer.parseInt(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("RoomService") )
                                 {
                                     orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1150,13 +954,13 @@ public class MainActivity extends AppCompatActivity {
                 SOSListiner[i] = FireRooms.get(i).child("SOS").addValueEventListener(new ValueEventListener()
                 {
                     @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (!dataSnapshot.getValue().toString().equals("0"))
-                        {
-                            boolean status = false ;
-                            status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"SOS");
-                            long time =  Long.parseLong(dataSnapshot.getValue().toString());
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                        if (dataSnapshot.getValue() != null) {
+                            if (!dataSnapshot.getValue().toString().equals("0"))
+                            {
+                                boolean status = false ;
+                                status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"SOS");
+                                long time =  Long.parseLong(dataSnapshot.getValue().toString());
 //                            for (int j=0;j<list.size();j++)
 //                            {
 //                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("SOS") )
@@ -1164,36 +968,34 @@ public class MainActivity extends AppCompatActivity {
 //                                    status=true;
 //                                }
 //                            }
-                            if (!status)
-                            {
-                                //Calendar x = Calendar.getInstance(Locale.getDefault());
-//                                long timee = Long.parseLong(dataSnapshot.getValue().toString());
-//                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "SOS", "", timee));
-//                                adapter.notifyDataSetChanged();
-                                //int reqCode = r.nextInt();
-                                //showNotification(act,"SOS "+Rooms.get(finalI).RoomNumber , "SOS on room "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                                orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"SOS","",time);
-                                adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
-                                g.setAdapter(adapter);
+                                if (!status)
+                                {
+                                    orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"SOS","",time);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    adapter = new CleanUp_Adapter(list,act);
+                                    g.setAdapter(adapter);
+                                }
                             }
-                        }
-                        else
-                        {
-                            for (int x=0;x<orderDB.getOrders().size();x++)
+                            else
                             {
+                                for (int x=0;x<orderDB.getOrders().size();x++)
+                                {
 //                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("SOS"))
 //                                {
 //                                    list.remove(x);
 //                                    adapter.notifyDataSetChanged();
 //                                }
-                                if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("SOS") )
-                                {
-                                    orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
-                                    g.setAdapter(adapter);
+                                    if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("SOS") )
+                                    {
+                                        orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
+                                        List<cleanOrder> list = orderDB.getOrders() ;
+                                        adapter = new CleanUp_Adapter(list,act);
+                                        g.setAdapter(adapter);
+                                    }
                                 }
                             }
                         }
+
                     }
                     @Override
                     public void onCancelled(@NonNull DatabaseError databaseError)
@@ -1201,13 +1003,10 @@ public class MainActivity extends AppCompatActivity {
 
                     }
                 });
-                MiniBarCheck[i] = FireRooms.get(i).child("MiniBarCheck").addValueEventListener(new ValueEventListener()
-                {
+                MiniBarCheck[i] = FireRooms.get(i).child("MiniBarCheck").addValueEventListener(new ValueEventListener() {
                     @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (dataSnapshot.getValue() !=null)
-                        {
+                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                        if (dataSnapshot.getValue() !=null) {
                             if (dataSnapshot.getValue().toString().equals("0"))
                             {
                                 for (int x=0;x<orderDB.getOrders().size();x++)
@@ -1220,7 +1019,8 @@ public class MainActivity extends AppCompatActivity {
                                     if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("MiniBarCheck") )
                                     {
                                         orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                        adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                        List<cleanOrder> list = orderDB.getOrders() ;
+                                        adapter = new CleanUp_Adapter(list,act);
                                         g.setAdapter(adapter);
                                     }
                                 }
@@ -1243,9 +1043,9 @@ public class MainActivity extends AppCompatActivity {
 //                                    list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"MiniBarCheck","",timee));
 //                                    g.setAdapter(adapter);
                                     long timee =  Long.parseLong(dataSnapshot.getValue().toString());
-                                    //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
                                     orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"MiniBarCheck","",timee);
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1322,11 +1122,12 @@ public class MainActivity extends AppCompatActivity {
 //                            }
                             if (!status)
                             {
-                                //Calendar x = Calendar.getInstance(Locale.getDefault());
                                 long timee = Long.parseLong(dataSnapshot.getValue().toString());
                                 orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"Cleanup","",timee);
-                                //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Cleanup","",timee));
-                                adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                List<cleanOrder> list = orderDB.getOrders() ;
+                                //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                adapter = new CleanUp_Adapter(list,act);
                                 g.setAdapter(adapter);
                             }
                         }
@@ -1337,7 +1138,10 @@ public class MainActivity extends AppCompatActivity {
                                 if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("Cleanup") )
                                 {
                                     orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1360,11 +1164,12 @@ public class MainActivity extends AppCompatActivity {
                             status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"Laundry");
                             if (!status)
                             {
-                                //Calendar x = Calendar.getInstance(Locale.getDefault());
                                 long timee =  Long.parseLong(dataSnapshot.getValue().toString());
-                                //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
                                 orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"Laundry","",timee);
-                                adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                List<cleanOrder> list = orderDB.getOrders() ;
+                                //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                adapter = new CleanUp_Adapter(list,act);
                                 g.setAdapter(adapter);
 //                                adapter.notifyDataSetChanged();
 //                                int reqCode = r.nextInt();
@@ -1384,7 +1189,10 @@ public class MainActivity extends AppCompatActivity {
                                 if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("Laundry") )
                                 {
                                     orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1402,7 +1210,6 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot1)
                     {
-                        //Log.d("roomserviceProblem" , FireRooms.size()+" " + Rooms.size());
                         FireRooms.get(finalI).child("RoomServiceText").addListenerForSingleValueEvent(new ValueEventListener() {
                             @Override
                             public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
@@ -1412,66 +1219,28 @@ public class MainActivity extends AppCompatActivity {
                                     boolean status = false ;
                                     long time = Long.parseLong(dataSnapshot1.getValue().toString());
                                     status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"RoomService");
-//                            for (int j=0;j<list.size();j++)
-//                            {
-//                                if ( Integer.parseInt(list.get(j).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(j).dep.equals("RoomService") )
-//                                {
-//                                    status=true;
-//
-//                                }
-//                            }
-                                    Log.d("roomserviceProblem" , status+"");
                                     if (!status)
                                     {
-
                                         if (dataSnapshot.getValue() != null ) {
                                            list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", dataSnapshot.getValue().toString(), time));
                                             adapter.notifyDataSetChanged();
-                                           Log.d("roomserviceProblem" , "inserted");
                                            orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService",dataSnapshot.getValue().toString(),time);
-                                          adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                            List<cleanOrder> list = orderDB.getOrders() ;
+                                            //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                            adapter = new CleanUp_Adapter(list,act);
                                            g.setAdapter(adapter);
                                         }
                                        else {
                                            list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", "", time));
                                             adapter.notifyDataSetChanged();
                                           orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService","",time);
-                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                            List<cleanOrder> list = orderDB.getOrders() ;
+                                            //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                            adapter = new CleanUp_Adapter(list,act);
                                             g.setAdapter(adapter);
                                        }
-
-//                                FireRooms.get(finalI).child("RoomServiceText").addListenerForSingleValueEvent(new ValueEventListener() {
-//                                    @Override
-//                                    public void onDataChange(@NonNull DataSnapshot dataSnapshot2)
-//                                    {
-//                                        //Calendar x = Calendar.getInstance(Locale.getDefault());
-//                                        //long timee = x.getTimeInMillis();
-//                                        if (dataSnapshot2.getValue() != null ) {
-////                                            list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", dataSnapshot2.getValue().toString(), time));
-////                                            adapter.notifyDataSetChanged();
-////                                            Log.d("roomserviceProblem" , "inserted");
-//                                            orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService",dataSnapshot2.getValue().toString(),time);
-//                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
-//                                            g.setAdapter(adapter);
-//                                        }
-//                                        else {
-////                                            list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", "", time));
-////                                            adapter.notifyDataSetChanged();
-//                                            orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"RoomService","",time);
-//                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
-//                                            g.setAdapter(adapter);
-//                                        }
-//
-//                                    }
-//
-//                                    @Override
-//                                    public void onCancelled(@NonNull DatabaseError databaseError) {
-//
-//                                    }
-//                                });
-
-                                        //int reqCode = r.nextInt();
-                                        //showNotification(act,"RoomService Order "+Rooms.get(finalI).RoomNumber , "new room service order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
                                     }
                                 }
                                 else
@@ -1486,7 +1255,10 @@ public class MainActivity extends AppCompatActivity {
                                         if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("RoomService") )
                                         {
                                             orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                            adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                            List<cleanOrder> list = orderDB.getOrders() ;
+                                            //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                            adapter = new CleanUp_Adapter(list,act);
                                             g.setAdapter(adapter);
                                         }
                                     }
@@ -1499,7 +1271,6 @@ public class MainActivity extends AppCompatActivity {
 
                             }
                         });
-                        //past here
                     }
                     @Override
                     public void onCancelled(@NonNull DatabaseError databaseError) {
@@ -1522,7 +1293,7 @@ public class MainActivity extends AppCompatActivity {
 //                                {
 //                                    status=true;
 //                                }
-//                            }
+//
                             if (!status)
                             {
                                 //Calendar x = Calendar.getInstance(Locale.getDefault());
@@ -1532,7 +1303,10 @@ public class MainActivity extends AppCompatActivity {
                                 //int reqCode = r.nextInt();
                                 //showNotification(act,"SOS "+Rooms.get(finalI).RoomNumber , "SOS on room "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
                                 orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"SOS","",time);
-                                adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                List<cleanOrder> list = orderDB.getOrders() ;
+                                //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                adapter = new CleanUp_Adapter(list,act);
                                 g.setAdapter(adapter);
                             }
                         }
@@ -1548,7 +1322,10 @@ public class MainActivity extends AppCompatActivity {
                                 if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("SOS") )
                                 {
                                     orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1571,15 +1348,13 @@ public class MainActivity extends AppCompatActivity {
                             {
                                 for (int x=0;x<orderDB.getOrders().size();x++)
                                 {
-//                                    if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("MiniBarCheck") )
-//                                    {
-//                                        list.remove(x);
-//                                        adapter.notifyDataSetChanged();
-//                                    }
                                     if (Long.parseLong(orderDB.getOrders().get(x).roomNumber) == Rooms.get(finalI).RoomNumber && orderDB.getOrders().get(x).dep.equals("MiniBarCheck") )
                                     {
                                         orderDB.removeRow( Long.parseLong(orderDB.getOrders().get(x).orderNumber));
-                                        adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                        List<cleanOrder> list = orderDB.getOrders() ;
+                                        //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                        adapter = new CleanUp_Adapter(list,act);
                                         g.setAdapter(adapter);
                                     }
                                 }
@@ -1588,23 +1363,14 @@ public class MainActivity extends AppCompatActivity {
                             {
                                 boolean status = false ;
                                 status = orderDB.searchOrder(Rooms.get(finalI).RoomNumber,"MiniBarCheck");
-//                                for (int j=0;j<list.size();j++)
-//                                {
-//                                    if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("MiniBarCheck"))
-//                                    {
-//                                        status=true;
-//                                    }
-//                                }
                                 if (!status)
                                 {
-//                                    Calendar x = Calendar.getInstance(Locale.getDefault());
-//                                    long timee =  x.getTimeInMillis();
-//                                    list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"MiniBarCheck","",timee));
-//                                    g.setAdapter(adapter);
                                     long timee =  Long.parseLong(dataSnapshot.getValue().toString());
-                                    //list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
                                     orderDB.insertOrder(Rooms.get(finalI).RoomNumber,"MiniBarCheck","",timee);
-                                    adapter = new CleanUp_Adapter(orderDB.getOrders(),act);
+                                    List<cleanOrder> list = orderDB.getOrders() ;
+                                    //TODO insert the sort function here to sort the list before pass it to adapter
+
+                                    adapter = new CleanUp_Adapter(list,act);
                                     g.setAdapter(adapter);
                                 }
                             }
@@ -1623,7 +1389,7 @@ public class MainActivity extends AppCompatActivity {
                 public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
                     if (dataSnapshot.getValue() != null ) {
                         CurrentRoomsStatus.set(finalI,dataSnapshot.getValue().toString());
-                        Log.d("CurrentRoomsStatus" , CurrentRoomsStatus.size()+" "+dataSnapshot.getValue().toString());
+                        adapter.notifyDataSetChanged();
                     }
                 }
 
@@ -1636,41 +1402,14 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    public void showNotification(Context context, String title, String message, Intent intent, int reqCode)
-    {
-        //SharedPreferenceManager sharedPreferenceManager = SharedPreferenceManager.getInstance(context);
-
-        PendingIntent pendingIntent = PendingIntent.getActivity(context, reqCode, intent, PendingIntent.FLAG_ONE_SHOT);
-        Intent i = new Intent(this , MainActivity.class);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        String CHANNEL_ID = "channel_name";// The id of the channel.
-        NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setAutoCancel(true)
-                .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
-                .setContentIntent(pendingIntent)
-                .setColor(Color.RED);
-        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Channel Name";// The user-visible name of the channel.
-            int importance = NotificationManager.IMPORTANCE_HIGH;
-            NotificationChannel mChannel = new NotificationChannel(CHANNEL_ID, name, importance);
-            notificationManager.createNotificationChannel(mChannel);
-        }
-        notificationManager.notify(reqCode, notificationBuilder.build()); // 0 is the request code, it should be unique id
-        //startActivity(i);
-    }
-
     private void auth() {
         final Dialog d = new Dialog(act) ;
         d.setContentView(R.layout.loading_dialog);
         d.setCancelable(false);
         d.show();
         ApiService apiService = RetrofitAPIManager.provideClientApi();
-        String userN = "basharsebai@gmail.com";
-        String passW = "Freesyria579251";
+        String userN = "";
+        String passW = "";
         String account = userN.trim();
         password = passW.trim();
         password = DigitUtil.getMD5(password);
@@ -1742,7 +1481,7 @@ public class MainActivity extends AppCompatActivity {
                         for(LockObj o : lockObjs){
                             Log.d("ttlockLogin" , o.getLockName());
                             for (ROOM r :Rooms){
-                                if (o.getLockName().equals(r.RoomNumber+"Lock")){
+                                if (o.getLockAlias().equals(r.RoomNumber+"Lock")){
                                     r.setLOCK(o);
                                 }
                             }
@@ -1791,8 +1530,6 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-
-
     public void goLogIn() {
        final  LoadingDialog d = new LoadingDialog(act);
                     TuyaHomeSdk.getUserInstance().loginWithEmail("966", "basharsebai@gmail.com", "Freesyria579251", new ILoginCallback()
@@ -1822,9 +1559,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onError(String errorCode, String error)
             {
-                //alendar c  = Calendar.getInstance(Locale.getDefault());
-                //long time = c.getTimeInMillis();
-               // ErrorRegister.rigestError(act , LogIn.room.getProjectName(),LogIn.room.getRoomNumber() , time ,8 ,error,"getting families from tuya");
+                getFamilies();
             }
             @Override
             public void onSuccess(List<HomeBean> homeBeans)
@@ -1850,7 +1585,6 @@ public class MainActivity extends AppCompatActivity {
                             lis = homeBean.getDeviceList();
                             if (lis.size() == 0)
                             {
-                                //ToastMaker.MakeToast("no devices" , act );
                                 Log.d("tuyaHome" ,lis.size()+"");
                             }
                             else
@@ -1989,664 +1723,12 @@ public class MainActivity extends AppCompatActivity {
                         @Override
                         public void onError(String errorCode, String errorMsg)
                         {
-                            Log.d("tuyaHome" ,errorMsg);
-                            //loading.stop();
-                            //long time = ca.getTimeInMillis();
-                            //ErrorRegister.rigestError(act,LogIn.room.getProjectName(),LogIn.room.getRoomNumber(),time,16,errorMsg,"error Getting Project Registered Devices");
+                            getFamilies();
                         }
                     });
                 }
             }
         });
-    }
-
-    void setFireRoomsListiner2(){
-
-        for ( int i=0; i < FireRooms.size() ; i++)
-        {
-            final int finalI = i;
-            if (DEP.equals("Cleanup"))
-            {
-                CleanupListiner[i] = FireRooms.get(i).child("Cleanup").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        //Toast.makeText(act,""+dataSnapshot.getValue().toString(),Toast.LENGTH_SHORT).show();
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) !=0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("Cleanup"))
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee =  x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Cleanup","",timee));
-                                g.setAdapter(adapter);
-                            }
-                            int reqCode = r.nextInt();
-                            //showNotification(act,"Cleanup Order "+Rooms.get(finalI).RoomNumber , "new cleanup order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("Cleanup") )
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                DNDListiner[i] = FireRooms.get(i).child("DND").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<dndList.size();j++)
-                            {
-                                if (dndList.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status) {
-                                Log.d("DNDchecking" , + Rooms.get(finalI).RoomNumber + " ");
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                dndList.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "DND", "", timee));
-                                ada.notifyDataSetChanged();
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<dndList.size();x++)
-                            {
-                                if (Integer.parseInt(dndList.get(x).roomNumber) == Rooms.get(finalI).RoomNumber )
-                                {
-                                    Log.d("DNDchecking" , dndList.get(x).roomNumber +" " + Rooms.get(finalI).RoomNumber + " " +x);
-                                    dndList.remove(x);
-                                    ada.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-            }
-            else if (DEP.equals("Laundry"))
-            {
-                LaundryListiner[i] = FireRooms.get(i).child("Laundry").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("Laundry"))
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee =  x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
-                                adapter.notifyDataSetChanged();
-                                int reqCode = r.nextInt();
-                                //showNotification(act,"Laundry Order "+Rooms.get(finalI).RoomNumber , "new laundry order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("Laundry") )
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                DNDListiner[i] = FireRooms.get(i).child("DND").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-
-                            boolean status = false ;
-                            for (int j=0;j<dndList.size();j++)
-                            {
-                                if (dndList.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) )
-                                {
-                                    Log.d("dndProblem" ,dndList.get(j).roomNumber +" " +Rooms.get(finalI).RoomNumber );
-                                    status=true;
-                                }
-                            }
-                            if (!status) {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                dndList.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "DND", "", timee));
-                                ada.notifyDataSetChanged();
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<dndList.size();x++)
-                            {
-                                if (Integer.parseInt(dndList.get(x).roomNumber) == Rooms.get(finalI).RoomNumber )
-                                {
-                                    dndList.remove(x);
-                                    ada.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-            }
-            else if (DEP.equals("RoomService"))
-            {
-                RoomServiceListiner[i] = FireRooms.get(i).child("RoomService").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (!dataSnapshot.getValue().toString().equals("0") )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("RoomService") )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-
-                                FireRooms.get(finalI).child("RoomServiceText").addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override
-                                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                                    {
-                                        Calendar x = Calendar.getInstance(Locale.getDefault());
-                                        long timee = x.getTimeInMillis();
-                                        list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", dataSnapshot.getValue().toString(), timee));
-                                        adapter.notifyDataSetChanged();
-                                    }
-
-                                    @Override
-                                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                                    }
-                                });
-
-                                //int reqCode = r.nextInt();
-                                //showNotification(act,"RoomService Order "+Rooms.get(finalI).RoomNumber , "new room service order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("RoomService"))
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                DNDListiner[i] = FireRooms.get(i).child("DND").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<dndList.size();j++)
-                            {
-                                if (dndList.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status) {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                dndList.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "DND", "", timee));
-                                ada.notifyDataSetChanged();
-
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<dndList.size();x++)
-                            {
-                                if (Integer.parseInt(dndList.get(x).roomNumber) == Rooms.get(finalI).RoomNumber )
-                                {
-                                    dndList.remove(x);
-                                    ada.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                SOSListiner[i] = FireRooms.get(i).child("SOS").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (!dataSnapshot.getValue().toString().equals("0"))
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("SOS") )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "SOS", "", timee));
-                                adapter.notifyDataSetChanged();
-                                int reqCode = r.nextInt();
-                                //showNotification(act,"SOS "+Rooms.get(finalI).RoomNumber , "SOS on room "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("SOS"))
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError)
-                    {
-
-                    }
-                });
-                MiniBarCheck[i] = FireRooms.get(i).child("MiniBarCheck").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (dataSnapshot.getValue() !=null)
-                        {
-                            if (dataSnapshot.getValue().toString().equals("0"))
-                            {
-                                for (int x=0;x<list.size();x++)
-                                {
-                                    if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("MiniBarCheck") )
-                                    {
-                                        list.remove(x);
-                                        adapter.notifyDataSetChanged();
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                boolean status = false ;
-                                for (int j=0;j<list.size();j++)
-                                {
-                                    if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("MiniBarCheck"))
-                                    {
-                                        status=true;
-                                    }
-                                }
-                                if (!status)
-                                {
-                                    Calendar x = Calendar.getInstance(Locale.getDefault());
-                                    long timee =  x.getTimeInMillis();
-                                    list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"MiniBarCheck","",timee));
-                                    g.setAdapter(adapter);
-                                }
-                            }
-                        }
-
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-            }
-            else if (DEP.equals("Service"))
-            {
-                CleanupListiner[i] = FireRooms.get(i).child("Cleanup").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        //Toast.makeText(act,""+dataSnapshot.getValue().toString(),Toast.LENGTH_SHORT).show();
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) !=0  )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("Cleanup"))
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee =  x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Cleanup","",timee));
-                                g.setAdapter(adapter);
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("Cleanup") )
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                LaundryListiner[i] = FireRooms.get(i).child("Laundry").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("Laundry"))
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee =  x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"Laundry","",timee));
-                                adapter.notifyDataSetChanged();
-                                int reqCode = r.nextInt();
-                                //showNotification(act,"Laundry Order "+Rooms.get(finalI).RoomNumber , "new laundry order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("Laundry") )
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                RoomServiceListiner[i] = FireRooms.get(i).child("RoomService").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (!dataSnapshot.getValue().toString().equals("0") )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("RoomService") )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-
-                                FireRooms.get(finalI).child("RoomServiceText").addListenerForSingleValueEvent(new ValueEventListener() {
-                                    @Override
-                                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                                    {
-                                        Calendar x = Calendar.getInstance(Locale.getDefault());
-                                        long timee = x.getTimeInMillis();
-                                        list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "RoomService", dataSnapshot.getValue().toString(), timee));
-                                        adapter.notifyDataSetChanged();
-                                    }
-
-                                    @Override
-                                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                                    }
-                                });
-
-                                //int reqCode = r.nextInt();
-                                //showNotification(act,"RoomService Order "+Rooms.get(finalI).RoomNumber , "new room service order from "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("RoomService"))
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                DNDListiner[i] = FireRooms.get(i).child("DND").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (Integer.parseInt(dataSnapshot.getValue().toString()) != 0 )
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<dndList.size();j++)
-                            {
-                                if (dndList.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status) {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                dndList.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "DND", "", timee));
-                                ada.notifyDataSetChanged();
-
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<dndList.size();x++)
-                            {
-                                if (Integer.parseInt(dndList.get(x).roomNumber) == Rooms.get(finalI).RoomNumber )
-                                {
-                                    dndList.remove(x);
-                                    ada.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-                SOSListiner[i] = FireRooms.get(i).child("SOS").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (!dataSnapshot.getValue().toString().equals("0"))
-                        {
-                            boolean status = false ;
-                            for (int j=0;j<list.size();j++)
-                            {
-                                if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("SOS") )
-                                {
-                                    status=true;
-                                }
-                            }
-                            if (!status)
-                            {
-                                Calendar x = Calendar.getInstance(Locale.getDefault());
-                                long timee = x.getTimeInMillis();
-                                list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber), String.valueOf(1), "SOS", "", timee));
-                                adapter.notifyDataSetChanged();
-                                int reqCode = r.nextInt();
-                                //showNotification(act,"SOS "+Rooms.get(finalI).RoomNumber , "SOS on room "+Rooms.get(finalI).RoomNumber,NotificationIntent,reqCode);
-                            }
-                        }
-                        else
-                        {
-                            for (int x=0;x<list.size();x++)
-                            {
-                                if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("SOS"))
-                                {
-                                    list.remove(x);
-                                    adapter.notifyDataSetChanged();
-                                }
-                            }
-                        }
-                    }
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError)
-                    {
-
-                    }
-                });
-                MiniBarCheck[i] = FireRooms.get(i).child("MiniBarCheck").addValueEventListener(new ValueEventListener()
-                {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot dataSnapshot)
-                    {
-                        if (dataSnapshot.getValue() !=null)
-                        {
-                            if (dataSnapshot.getValue().toString().equals("0"))
-                            {
-                                for (int x=0;x<list.size();x++)
-                                {
-                                    if (Integer.parseInt(list.get(x).roomNumber) == Rooms.get(finalI).RoomNumber && list.get(x).dep.equals("MiniBarCheck") )
-                                    {
-                                        list.remove(x);
-                                        adapter.notifyDataSetChanged();
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                boolean status = false ;
-                                for (int j=0;j<list.size();j++)
-                                {
-                                    if (list.get(j).roomNumber.equals(String.valueOf(Rooms.get(finalI).RoomNumber)) && list.get(j).dep.equals("MiniBarCheck"))
-                                    {
-                                        status=true;
-                                    }
-                                }
-                                if (!status)
-                                {
-                                    Calendar x = Calendar.getInstance(Locale.getDefault());
-                                    long timee =  x.getTimeInMillis();
-                                    list.add(new cleanOrder(String.valueOf(Rooms.get(finalI).RoomNumber),String.valueOf(1),"MiniBarCheck","",timee));
-                                    g.setAdapter(adapter);
-                                }
-                            }
-                        }
-
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError databaseError) {
-
-                    }
-                });
-            }
-        }
-
     }
 
     void changePasswordDialog () {
@@ -2724,5 +1806,9 @@ public class MainActivity extends AppCompatActivity {
         D.show();
     }
 
+    public List<cleanOrder> sortOrdersListByTime(List<cleanOrder> list) {
+        //TODO make the sort function here
 
+        return null;
+    }
 }

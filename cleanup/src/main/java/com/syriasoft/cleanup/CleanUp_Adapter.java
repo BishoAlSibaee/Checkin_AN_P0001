@@ -31,22 +31,23 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class CleanUp_Adapter extends BaseAdapter {
 
-    List<cleanOrder> list = new ArrayList<cleanOrder>();
+    List<cleanOrder> list;
     LayoutInflater inflter;
     Context co ;
     String setRoomStatus = LogIn.URL+"setRoomStatus.php";
 
-    CleanUp_Adapter(List<cleanOrder> list , Context c)
-    {
-        this.list = list ;
+    CleanUp_Adapter(List<cleanOrder> list , Context c) {
+        this.list = sortList(list); ;
         inflter = (LayoutInflater.from(c));
         this.co = c ;
+
     }
 
     @Override
@@ -108,47 +109,6 @@ public class CleanUp_Adapter extends BaseAdapter {
                     img.setBackgroundColor(Color.GRAY);
                 }
 
-//                MainActivity.FireRooms.get(i).child("roomStatus").addListenerForSingleValueEvent(new ValueEventListener() {
-//                    @Override
-//                    public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
-//                        if (dataSnapshot != null )
-//                        {
-//                            if (dataSnapshot.getValue().toString().equals("1"))
-//                            {
-//                                room.setTextColor(Color.WHITE);
-//                                room.setBackgroundColor(co.getColor(R.color.greenRoom));
-//                                vv.setBackgroundColor(co.getColor(R.color.greenRoom));
-//                                img.setBackgroundColor(co.getColor(R.color.greenRoom));
-//                            }
-//                            else if (dataSnapshot.getValue().toString().equals("2"))
-//                            {
-//                                room.setTextColor(Color.WHITE);
-//                                room.setBackgroundColor(co.getColor(R.color.redRoom));
-//                                vv.setBackgroundColor(co.getColor(R.color.redRoom));
-//                                img.setBackgroundColor(co.getColor(R.color.redRoom));
-//                            }
-//                            else if (dataSnapshot.getValue().toString().equals("3"))
-//                            {
-//                                room.setTextColor(Color.WHITE);
-//                                room.setBackgroundColor(co.getColor(R.color.blueRoom));
-//                                vv.setBackgroundColor(co.getColor(R.color.blueRoom));
-//                                img.setBackgroundColor(co.getColor(R.color.blueRoom));
-//                            }
-//                            else if (dataSnapshot.getValue().toString().equals("4"))
-//                            {
-//                                room.setTextColor(Color.WHITE);
-//                                room.setBackgroundColor(Color.GRAY);
-//                                vv.setBackgroundColor(Color.GRAY);
-//                                img.setBackgroundColor(Color.GRAY);
-//                            }
-//                        }
-//                    }
-//
-//                    @Override
-//                    public void onCancelled(@NonNull DatabaseError databaseError) {
-//
-//                    }
-//                });
                 MainActivity.FireRooms.get(i).child("SuiteStatus").addListenerForSingleValueEvent(new ValueEventListener() {
                     @Override
                     public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
@@ -495,18 +455,29 @@ public class CleanUp_Adapter extends BaseAdapter {
         {
             img.setVisibility(View.GONE);
         }
-
-        if (MainActivity.orderDB.getOrders().get(position).dep.equals("SOS"))
-        {
-            //l.setBackgroundColor(Color.RED);
-            dep.setBackgroundColor(Color.RED);
-            date.setBackgroundColor(Color.RED);
-            room.setTextColor(Color.WHITE);
-            dep.setTextColor(Color.RED);
-            date.setTextColor(Color.WHITE);
-            vv.setTextColor(Color.WHITE);
-        }
+//        if (MainActivity.orderDB.getOrders().get(position).dep.equals("SOS"))
+//        {
+//            dep.setBackgroundColor(Color.RED);
+//            date.setBackgroundColor(Color.RED);
+//            room.setTextColor(Color.WHITE);
+//            dep.setTextColor(Color.RED);
+//            date.setTextColor(Color.WHITE);
+//            vv.setTextColor(Color.WHITE);
+//        }
 
         return convertView;
     }
+
+    List<cleanOrder> sortList(List<cleanOrder> list) {
+        for (int i = 0;i<list.size()-1;i++) {
+            for (int j =0;j<list.size()-i-1;j++) {
+                if (list.get(j+1).date < list.get(j).date) {
+                    Collections.swap(list,j,j+1);
+                }
+            }
+        }
+        return list ;
+    }
+
+
 }

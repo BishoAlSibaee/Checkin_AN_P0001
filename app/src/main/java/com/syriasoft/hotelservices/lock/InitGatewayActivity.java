@@ -125,7 +125,6 @@ public class InitGatewayActivity extends AppCompatActivity {
                 configureGatewayInfo.plugName = gwName.getText().toString().trim();
                 configureGatewayInfo.wifiPwd = wifiPwd.getText().toString().trim();
 
-                //TODO:
                 configureGatewayInfo.plugName = device.getAddress();
 
                 GatewayClient.getDefault().initGateway(configureGatewayInfo, new InitGatewayCallback() {
@@ -151,7 +150,7 @@ public class InitGatewayActivity extends AppCompatActivity {
 //            configureGatewayInfo.plugName = binding.gatewayName.getText().toString().trim();
             configureGatewayInfo.wifiPwd = binding.wifiPwd.getText().toString().trim();
 
-            //TODO:
+
             configureGatewayInfo.plugName = device.getAddress();
 
             GatewayClient.getDefault().initGateway(configureGatewayInfo, new InitGatewayCallback() {

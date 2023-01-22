@@ -25,7 +25,6 @@ public class ApiResult<T> {
 
     public ApiResult() {
         super();
-        // TODO Auto-generated constructor stub
     }
 
     public ApiResult(JSONObject jsonObject, TypeToken<T> typeToken) {
@@ -54,7 +53,6 @@ public class ApiResult<T> {
 
             }
         }catch (Exception e) {
-            // TODO: handle exception
         }
 
     }

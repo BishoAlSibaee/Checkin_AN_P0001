@@ -26,7 +26,7 @@ public class UserDB extends SQLiteOpenHelper implements Serializable{
     @Override
     public void onCreate(SQLiteDatabase db)
     {
-        db.execSQL("CREATE TABLE IF NOT EXISTS user ( 'id' INTEGER PRIMARY KEY ,'name' VARCHAR , 'jobNumber' INTEGER , 'mobile' INTEGER,'token' TEXT ,'department' VARCHAR , 'Facility' INTEGER) ");
+        db.execSQL("CREATE TABLE IF NOT EXISTS user ( 'id' INTEGER PRIMARY KEY ,'name' VARCHAR , 'jobNumber' INTEGER , 'mobile' INTEGER,'token' TEXT ,'department' VARCHAR , 'Facility' INTEGER,'Version' INTEGER) ");
     }
 
     @Override
@@ -36,7 +36,7 @@ public class UserDB extends SQLiteOpenHelper implements Serializable{
         onCreate(db);
     }
 
-    public boolean insertUser (int id ,String name, int mobile , String token ,String department , int jobNumber ,int Facility)
+    public boolean insertUser (int id ,String name, int mobile , String token ,String department , int jobNumber ,int Facility,int Version)
     {
         boolean result = false ;
         ContentValues values = new ContentValues();
@@ -47,9 +47,11 @@ public class UserDB extends SQLiteOpenHelper implements Serializable{
         values.put("token",token);
         values.put("department",department);
         values.put("Facility", Facility );
+        values.put("Version",Version);
         try {
-            db.insert("user", null, values);
-            result = true ;
+            if (db.insert("user", null, values) > 0){
+                result = true ;
+            }
         }catch (Exception e )
         {
             Toast.makeText(c , e.getMessage() , Toast.LENGTH_LONG).show();
@@ -88,15 +90,21 @@ public class UserDB extends SQLiteOpenHelper implements Serializable{
         //"id","name","mobile","jobNumber","token",
         //Cursor c = db.query("user", new String[]{"department" }, "", null, null, null, null);
         Cursor c = db.rawQuery("SELECT * FROM 'user' ; " , null);
-        c.moveToFirst();
-        id = c.getInt(0);
-        name = c.getString(1);
-        jobNumber = c.getInt(2);
-        mobile = c.getInt(3);
-        token = c.getString(4);
-        department = c.getString(5);
-        u=new User(id,name,jobNumber,mobile,department,token);
-        return u ;
+        if (c.getCount() > 0 ) {
+            c.moveToFirst();
+            id = c.getInt(0);
+            name = c.getString(1);
+            jobNumber = c.getInt(2);
+            mobile = c.getInt(3);
+            token = c.getString(4);
+            department = c.getString(5);
+            u=new User(id,name,jobNumber,mobile,department,token);
+            return u ;
+        }
+        else {
+            return null;
+        }
+
     }
 
     public void logout()

@@ -4,9 +4,21 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/Checkin_android_P0001.iml" filepath="$PROJECT_DIR$/.idea/modules/Checkin_android_P0001.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.main.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/app/Checkin_android_P0001.app.unitTest.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.iml" filepath="$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.main.iml" filepath="$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/cleanup/Checkin_android_P0001.cleanup.unitTest.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.iml" filepath="$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.main.iml" filepath="$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/hotelservicesstandalone/Checkin_android_P0001.hotelservicesstandalone.unitTest.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.iml" filepath="$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.androidTest.iml" filepath="$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.androidTest.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.main.iml" filepath="$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.unitTest.iml" filepath="$PROJECT_DIR$/.idea/modules/laundryscreen/Checkin_android_P0001.laundryscreen.unitTest.iml" />
     </modules>
   </component>
 </project>

@@ -5,7 +5,6 @@
 
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
     <application
@@ -17,27 +16,41 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HotelServices"
         tools:replace="android:allowBackup,android:supportsRtl">
+        <activity android:name=".Locks"
+            android:screenOrientation="landscape"/>
+
         <meta-data
             android:name="TUYA_SMART_APPKEY"
             android:value="hjucvkp8crmjt5vvevre" />
         <meta-data
             android:name="TUYA_SMART_SECRET"
             android:value="netymnmhf4mvnvantyd9mhhqaahnc8ea" />
-        <activity android:name=".RoomManager" android:theme="@style/Theme.AppCompat.NoActionBar"></activity>
-        <activity android:name=".Rooms" android:theme="@style/Theme.AppCompat.NoActionBar" />
-        <activity android:name=".Login"
-            android:theme="@style/Theme.AppCompat.NoActionBar">
+
+        <activity
+            android:name=".RoomManager"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:screenOrientation="landscape"/>
+        <activity
+            android:name=".Rooms"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:screenOrientation="landscape"/>
+        <activity
+            android:name=".Login"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.HOME"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.MONKEY"/>
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.MONKEY" />
             </intent-filter>
         </activity>
-        <service android:name=".MessagingService"
-                android:enabled="true"
-                android:exported="true">
+
+        <service
+            android:name=".MessagingService"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>

@@ -856,8 +856,8 @@ public class FullscreenActivity extends AppCompatActivity {
         });
         database = FirebaseDatabase.getInstance("https://hotelservices-ebe66.firebaseio.com/");
         ServiceUsers = database.getReference(LogIn.room.getProjectName()+"ServiceUsers");
-        //getServiceUsersFromFirebase();
-        getServiceEmps();
+        getServiceUsersFromFirebase();
+        //getServiceEmps();
         Room = database.getReference(LogIn.room.getProjectName()+"/B"+LogIn.room.getBuilding()+"/F"+LogIn.room.getFloor()+"/R"+LogIn.room.getRoomNumber());
         myRefLaundry = Room.child("Laundry");//
         myRefCleanup = Room.child("Cleanup");//
@@ -4984,9 +4984,9 @@ public class FullscreenActivity extends AppCompatActivity {
                                         }
                                     }
                                 }
+
                                 else if (zigbeeDevices.get(i).getName().equals(LogIn.room.getRoomNumber()+"IR")) {
                                     Log.d("IR" , "IR Found ");
-
                                 }
                             }
                             if (DoorSensorStatus )
@@ -5011,7 +5011,6 @@ public class FullscreenActivity extends AppCompatActivity {
                             {
                                 setCurtainSwitchStatus("1");
                                 curtainBtn.setVisibility(View.VISIBLE);
-                                BtnsList.add(new BTN(R.drawable.restaurant_background , "CURTAIN"));
                             }
                             else
                             {
@@ -11969,36 +11968,63 @@ public class FullscreenActivity extends AppCompatActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 if (snapshot.getValue() != null ) {
                     Emps.clear();
-                    //Log.d("EmpsAre ",snapshot.getValue().toString());
                     for (DataSnapshot child : snapshot.getChildren()) {
-                        //Log.d("EmpsAre ",child.getValue().toString());
                         int id = 0;
                         if (child.child("id").getValue() != null ) {
-                            id = Integer.parseInt( child.child("id").getValue().toString());
+                            try {
+                                id = Integer.parseInt(child.child("id").getValue().toString());
+                            }
+                            catch (Exception e) {
+                                id = 0 ;
+                            }
                         }
                         String name = "";
                         if (child.child("name").getValue() != null ) {
-                            name = child.child("name").getValue().toString();
+                            try {
+                                name = child.child("name").getValue().toString();
+                            }
+                            catch (Exception e){
+                                name = "" ;
+                            }
                         }
                         int jobnum = 0 ;
                         if (child.child("jobNumber").getValue() != null ) {
-                            jobnum = Integer.parseInt(child.child("jobNumber").getValue().toString());
+                            try {
+                                jobnum = Integer.parseInt(child.child("jobNumber").getValue().toString());
+                            }
+                            catch (Exception e) {
+                                jobnum = 0 ;
+                            }
                         }
                         String department = "";
                         if (child.child("department").getValue() != null ) {
-                            department = child.child("department").getValue().toString();
+                            try {
+                                department = child.child("department").getValue().toString();
+                            }
+                            catch (Exception e) {
+                                department = "";
+                            }
                         }
                         String mobile = "" ;
                         if (child.child("Mobile").getValue() != null ) {
-                            mobile = child.child("Mobile").getValue().toString();
+                            try {
+                                mobile = child.child("Mobile").getValue().toString();
+                            }
+                            catch (Exception e) {
+                                mobile = "";
+                            }
                         }
                         String token = "";
                         if (child.child("token").getValue() != null ) {
-                            token = child.child("token").getValue().toString() ;
+                            try {
+                                token = child.child("token").getValue().toString();
+                            }
+                            catch (Exception e) {
+                                token = "" ;
+                            }
                         }
                         Emps.add(new ServiceEmps(id,1,name,jobnum,department,mobile,token));
                     }
-                    //Toast.makeText(act,Emps.size()+"",Toast.LENGTH_LONG).show();
                     Log.d("EmpsAre ",Emps.size()+"");
                 }
             }

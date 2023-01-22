@@ -159,8 +159,6 @@ public class LockListAdapter extends  RecyclerView.Adapter<LockListAdapter.Devic
             @Override
             public void onClick(View v) {
                 ToastMaker.MakeToast("--start init lock--" ,mContext );
-
-
                 // if you need to add a hotel lock you should set hotel data for lock init.
 
 //        HotelData hotelData = new HotelData();
